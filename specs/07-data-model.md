@@ -63,7 +63,7 @@
 |---|---|---|
 | `serial_full` (unique) | — | 전체 일련번호 (타입 문자+국가 2자리+년도 2자리+4자리) |
 | `serial_short` | 일련번호 | 4자리 (검색용, index) |
-| `model_code` | 모델명 | 뒤 2자리 (예: 04) |
+| `model_name` | 모델명 | 전체 모델명 (예: NTI-04). 셀 값 `04` + 표시 형식 `"NTI-"`를 합쳐 저장 |
 | `bush_machining` | 부시 가공 | 6자리 숫자 |
 | `rpm` | rpm | 빈칸 가능 |
 | `power` | 전원 | 빈칸 가능 |
@@ -72,6 +72,7 @@
 | `inspection_no` | 검사번호 | 전체 번호(NTK + 년도 2자리 + 3자리)로 저장 |
 | `po_no` | 뉴토크 번호 PO번호 | 예: 26006 |
 | `so_no` | SO번호 | 빈칸 가능 |
+| `customer_order_no` | 거래처 주문번호 | 샘플 엑셀 L열 (2026-10-18 추가) |
 | `customer` | 거래처 | 판매처 |
 | `final_orderer` | 최종발주처 | |
 | `project_name` | 사업명 | |
@@ -174,3 +175,4 @@
 ## 변경 기록
 
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
+- 2026-10-18: Phase 3 구현. `model_code`(뒤 2자리) → `model_name`(전체 모델명)으로 변경 — 화면 표시와 수주서 품명(예: NTI-03) 대조에 전체 이름이 필요해서. 샘플 엑셀에서 확인한 `customer_order_no` 추가. 공통 필드는 `common/models.py`의 TimeStampedModel로 구현
