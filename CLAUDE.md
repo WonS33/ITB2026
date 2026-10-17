@@ -92,6 +92,7 @@ python manage.py makemigrations; python manage.py migrate   # 모델을 바꾼 �
 python manage.py test                                       # 백엔드 테스트
 python manage.py seed_users                                 # 가상 계정 6개 생성 (비밀번호: .env의 SEED_USER_PASSWORD)
 python manage.py seed_production                            # 가상 제조내역·목표 생산량 (다시 실행하면 가상 데이터만 새로 만듦)
+python manage.py make_sample_files                          # 시연용 가상 업로드 파일 → backend/sample_data/
 npm run build                                               # 프론트 빌드 오류 확인
 ```
 

@@ -167,7 +167,8 @@
 | `kind` | `manufacturing_excel` / `sales_order_pdf` / `trip_report_pdf` / `trip_report_excel` / `history_excel` |
 | `file_name` | 원본 파일 이름 |
 | `status` | `extracted`(확인 대기) / `saved`(저장 완료) / `cancelled` |
-| `extracted_data` | 추출 결과 (JSON, 확인·수정 단계에서 사용) |
+| `extracted_data` | 추출 결과 (JSON, 확인·수정 단계에서 사용). `columns`, `rows`(행마다 values·errors·duplicate·excluded), `skipped_count` |
+| `saved_count` | 저장한 행 수 |
 | `uploaded_by`, `uploaded_at` | |
 
 - 실제 기업 원본 파일을 서버에 보관할지, 추출 후 버릴지는 팀이 정한다. 원본 파일은 Git에 올리지 않는다.
@@ -176,3 +177,4 @@
 
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
 - 2026-10-18: Phase 3 구현. `model_code`(뒤 2자리) → `model_name`(전체 모델명)으로 변경 — 화면 표시와 수주서 품명(예: NTI-03) 대조에 전체 이름이 필요해서. 샘플 엑셀에서 확인한 `customer_order_no` 추가. 공통 필드는 `common/models.py`의 TimeStampedModel로 구현
+- 2026-10-18: UploadBatch 구현. `uploaded_by`·`uploaded_at`은 공통 필드 `created_by`·`created_at`으로 대신함. 원본 파일은 보관하지 않기로 결정

@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
+import FileUpload from '@/components/FileUpload.vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
 import StatCard from '@/components/StatCard.vue'
 import TargetForm from '@/components/production/TargetForm.vue'
@@ -65,5 +66,15 @@ watch(period, load, { deep: true, immediate: true })
         ※ 당월·분기 목표는 "연간 목표 ÷ 12 × 개월 수"로 나눈 임시 기준입니다 (기업 확인 필요).
       </p>
     </template>
+
+    <!-- 업로드는 생산팀 수정 권한자에게만 보인다 (백엔드 API에서도 권한을 다시 확인함) -->
+    <FileUpload
+      v-if="canEdit('production')"
+      kind="manufacturing_excel"
+      title="제조내역 엑셀 업로드"
+      accept=".xlsx"
+      help="제조내역 엑셀(.xlsx)을 올리면 추출 결과를 먼저 보여줍니다. 확인·수정한 뒤 [저장]을 눌러야 반영됩니다. 이미 저장된 일련번호는 건너뜁니다."
+      @saved="load"
+    />
   </div>
 </template>

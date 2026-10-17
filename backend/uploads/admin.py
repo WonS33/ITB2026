@@ -1,3 +1,9 @@
 from django.contrib import admin
 
-# Register your models here.
+from .models import UploadBatch
+
+
+@admin.register(UploadBatch)
+class UploadBatchAdmin(admin.ModelAdmin):
+    list_display = ("id", "kind", "file_name", "status", "saved_count", "created_by", "created_at")
+    list_filter = ("kind", "status")
