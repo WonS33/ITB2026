@@ -18,8 +18,11 @@ class UploadHandler:
     kind = ""
     team = ""  # 이 업로드를 할 수 있는 팀 (수정 권한 확인용)
     allowed_extensions = ()
-    columns = []  # 확인 화면 표의 열: [(key, label), ...]
+    columns = []  # 확인 화면 표의 열: [(key, label), ...] 또는 (key, label, {"choices": [...], "multiline": True})
     key_field = ""  # 중복 확인 기준 번호가 들어 있는 열
+    # True: 중복으로 잡힌 행을 사람이 "중복 아님"으로 확인하면 저장할 수 있다.
+    # 기준이 고유 번호가 아닌 종류만 켠다 (예: 출장보고서 = 시작일+요청처). 일련번호·판매번호는 끈다.
+    allow_duplicate_override = False
 
     def parse(self, file):
         """반환: (rows, skipped_count)"""
@@ -51,18 +54,35 @@ def check_rows(handler, rows):
     seen = set()
     for row, key in zip(active, keys):
         errors = handler.validate(row["values"])
-        if key and key in seen and handler.key_field not in errors:
-            errors[handler.key_field] = "파일 안에서 같은 번호가 이미 나왔습니다."
+        # 사람이 "중복 아님"으로 확인한 행 (허용하는 종류만)
+        override = handler.allow_duplicate_override and bool(row.get("allow_duplicate"))
+        row["in_file_duplicate"] = bool(key and key in seen)
+        row["matches_existing"] = bool(key and key in existing)
+        if row["in_file_duplicate"] and not override and handler.key_field not in errors:
+            errors[handler.key_field] = "파일 안에서 같은 기준 번호가 이미 나왔습니다."
         if key:
             seen.add(key)
-        row["duplicate"] = bool(key and key in existing)  # 이미 DB에 있음 → 저장 때 건너뜀
+        row["duplicate"] = row["matches_existing"] and not override  # 이미 DB에 있음 → 저장 때 건너뜀
         # 건너뛸 행은 고칠 필요가 없으므로 오류를 표시하지 않는다
         row["errors"] = {} if row["duplicate"] else errors
     handler.validate_all([r for r in active if not r["duplicate"]])
     for row in rows:
         if row.get("excluded"):
             row["errors"], row["duplicate"] = {}, False
+            row["matches_existing"] = row["in_file_duplicate"] = False
     return rows
+
+
+def column_specs(handler):
+    """확인 화면에 보낼 열 정보. choices가 있으면 선택 목록, multiline이면 여러 줄 입력으로 보여준다."""
+    specs = []
+    for key, label, *options in handler.columns:
+        specs.append({"key": key, "label": label, **(options[0] if options else {})})
+    return specs
+
+
+def column_keys(handler):
+    return [column[0] for column in handler.columns]
 
 
 def summarize(rows, skipped_count=0):

@@ -19,7 +19,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .handlers import HANDLERS
-from .handlers.base import check_rows, summarize
+from .handlers.base import check_rows, column_keys, column_specs, summarize
 from .models import UploadBatch
 
 logger = logging.getLogger(__name__)
@@ -44,6 +44,7 @@ def _batch_data(batch):
         "rows": data.get("rows", []),
         "summary": summarize(data.get("rows", []), data.get("skipped_count", 0)),
         "saved_count": batch.saved_count,
+        "allow_duplicate_override": HANDLERS[batch.kind].allow_duplicate_override,
     }
 
 
@@ -78,7 +79,7 @@ class UploadCreateView(APIView):
             kind=kind,
             file_name=file.name,
             extracted_data={
-                "columns": [{"key": k, "label": label} for k, label in handler.columns],
+                "columns": column_specs(handler),
                 "rows": rows,
                 "skipped_count": skipped,
             },
@@ -103,7 +104,7 @@ class UploadDetailView(UploadBatchMixin, APIView):
     def patch(self, request, pk):
         batch, handler = self.get_batch(request, pk)
         rows = batch.extracted_data["rows"]
-        editable = {k for k, _label in handler.columns}
+        editable = set(column_keys(handler))
         by_id = {row["id"]: row for row in rows}
 
         for change in request.data.get("rows", []):
@@ -115,6 +116,8 @@ class UploadDetailView(UploadBatchMixin, APIView):
                     row["values"][key] = "" if value is None else str(value)
             if "excluded" in change:
                 row["excluded"] = bool(change["excluded"])
+            if "allow_duplicate" in change and handler.allow_duplicate_override:
+                row["allow_duplicate"] = bool(change["allow_duplicate"])
 
         check_rows(handler, rows)
         batch.save(update_fields=["extracted_data", "updated_at"])

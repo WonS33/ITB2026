@@ -1,5 +1,6 @@
 from .manufacturing_excel import ManufacturingExcelHandler
 from .sales_order_pdf import SalesOrderPdfHandler
+from .trip_report_pdf import TripReportPdfHandler
 
 # 파일 종류(kind) → 업로드 규칙. 새 종류는 여기에 추가한다.
 HANDLERS = {
@@ -7,5 +8,6 @@ HANDLERS = {
     for handler in [
         ManufacturingExcelHandler(),
         SalesOrderPdfHandler(),
+        TripReportPdfHandler(),
     ]
 }

@@ -180,3 +180,4 @@
 - 2026-10-18: Phase 3 구현. `model_code`(뒤 2자리) → `model_name`(전체 모델명)으로 변경 — 화면 표시와 수주서 품명(예: NTI-03) 대조에 전체 이름이 필요해서. 샘플 엑셀에서 확인한 `customer_order_no` 추가. 공통 필드는 `common/models.py`의 TimeStampedModel로 구현
 - 2026-10-18: UploadBatch 구현. `uploaded_by`·`uploaded_at`은 공통 필드 `created_by`·`created_at`으로 대신함. 원본 파일은 보관하지 않기로 결정
 - 2026-10-18: SalesOrder·SalesOrderItem 구현. `order_date`(수주일) 추가. 제조내역과는 FK 없이 "수주서류 번호 = PO번호"로 조회 시 찾아 플랜지를 보완(임시)
+- 2026-10-18: 서비스팀 테이블 구현. `spec`·`serial_no_raw`는 보고서가 아니라 **제품(TripReportProduct)**에 둠 — 보고서 1건에 제품이 여러 개일 수 있고 제품마다 사양·일련번호가 다르기 때문. `purpose`(출장 목적) 추가. PartPrice는 단가 출처 확인 전이라 만들지 않음

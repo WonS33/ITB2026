@@ -1,6 +1,7 @@
 <script setup>
 // 업로드 확인·수정 표 (specs/03-common.md 4절 ③④⑤)
 // - 오류 칸은 빨간색 + 메시지, 이미 저장된 번호는 "중복(건너뜀)", 행마다 "제외" 선택
+// - 출장보고서처럼 기준이 고유 번호가 아닌 종류는 중복 행에 "중복 아님 — 저장" 체크칸을 보여준다
 // - [다시 검사]: 고친 값을 서버에 보내 다시 검사 / [저장]: 고친 값 반영 후 최종 저장
 import { reactive, ref, watch } from 'vue'
 import { cancelBatch, confirmBatch, updateBatch } from '@/api/uploads'
@@ -8,14 +9,14 @@ import { cancelBatch, confirmBatch, updateBatch } from '@/api/uploads'
 const props = defineProps({ batch: { type: Object, required: true } })
 const emit = defineEmits(['update', 'saved', 'cancelled'])
 
-const drafts = reactive({}) // 행 id → { values, excluded } (화면에서 고친 값)
+const drafts = reactive({}) // 행 id → { values, excluded, allow_duplicate } (화면에서 고친 값)
 const busy = ref(false)
 const error = ref('')
 
 function resetDrafts(batch) {
   for (const key of Object.keys(drafts)) delete drafts[key]
   for (const row of batch.rows) {
-    drafts[row.id] = { values: { ...row.values }, excluded: row.excluded }
+    drafts[row.id] = { values: { ...row.values }, excluded: row.excluded, allow_duplicate: !!row.allow_duplicate }
   }
 }
 watch(() => props.batch, resetDrafts, { immediate: true })
@@ -24,9 +25,13 @@ function changedRows() {
   return props.batch.rows
     .filter((row) => {
       const d = drafts[row.id]
-      return d.excluded !== row.excluded || Object.keys(d.values).some((k) => d.values[k] !== row.values[k])
+      return (
+        d.excluded !== row.excluded ||
+        d.allow_duplicate !== !!row.allow_duplicate ||
+        Object.keys(d.values).some((k) => d.values[k] !== row.values[k])
+      )
     })
-    .map((row) => ({ id: row.id, values: drafts[row.id].values, excluded: drafts[row.id].excluded }))
+    .map((row) => ({ id: row.id, ...drafts[row.id] }))
 }
 
 async function run(action) {
@@ -89,9 +94,9 @@ function rowClass(row) {
         <table class="table table-sm table-bordered align-middle small mb-2">
           <thead class="table-light sticky-top">
             <tr>
-              <th>제외</th>
-              <th>행</th>
-              <th>상태</th>
+              <th class="text-nowrap">제외</th>
+              <th class="text-nowrap">행</th>
+              <th class="text-nowrap">상태</th>
               <th v-for="col in batch.columns" :key="col.key" class="text-nowrap">{{ col.label }}</th>
             </tr>
           </thead>
@@ -104,9 +109,39 @@ function rowClass(row) {
                 <span v-else-if="Object.keys(row.errors).length" class="text-danger">오류</span>
                 <span v-else-if="row.duplicate">이미 저장됨</span>
                 <span v-else class="text-success">정상</span>
+                <!-- 같은 날 같은 곳에 실제로 두 번 간 경우: 사람이 확인하고 저장 -->
+                <label
+                  v-if="batch.allow_duplicate_override && !drafts[row.id].excluded && (row.matches_existing || row.in_file_duplicate)"
+                  class="form-check small mt-1 mb-0 text-nowrap"
+                >
+                  <input v-model="drafts[row.id].allow_duplicate" type="checkbox" class="form-check-input" />
+                  중복 아님 — 저장
+                </label>
               </td>
-              <td v-for="col in batch.columns" :key="col.key" style="min-width: 7rem">
+              <td v-for="col in batch.columns" :key="col.key" :style="{ minWidth: col.multiline ? '16rem' : col.choices ? '10rem' : '7rem' }">
+                <!-- 열 종류: 선택 목록(choices) / 여러 줄(multiline) / 한 줄 입력 -->
+                <select
+                  v-if="col.choices"
+                  v-model="drafts[row.id].values[col.key]"
+                  class="form-select form-select-sm"
+                  :class="{ 'is-invalid': row.errors[col.key] }"
+                  :disabled="drafts[row.id].excluded"
+                  :aria-label="col.label"
+                >
+                  <option value="">선택</option>
+                  <option v-for="c in col.choices" :key="c" :value="c">{{ c }}</option>
+                </select>
+                <textarea
+                  v-else-if="col.multiline"
+                  v-model="drafts[row.id].values[col.key]"
+                  rows="3"
+                  class="form-control form-control-sm"
+                  :class="{ 'is-invalid': row.errors[col.key] }"
+                  :disabled="drafts[row.id].excluded"
+                  :aria-label="col.label"
+                ></textarea>
                 <input
+                  v-else
                   v-model="drafts[row.id].values[col.key]"
                   class="form-control form-control-sm"
                   :class="{ 'is-invalid': row.errors[col.key] }"
@@ -126,7 +161,10 @@ function rowClass(row) {
         <button class="btn btn-primary btn-sm" :disabled="busy" @click="save">저장</button>
         <button class="btn btn-outline-secondary btn-sm ms-auto" :disabled="busy" @click="cancel">업로드 취소</button>
       </div>
-      <p class="text-muted small mt-2 mb-0">값을 고친 뒤 [다시 검사]로 확인하세요. 이미 저장된 번호(노란색)는 저장할 때 자동으로 건너뜁니다.</p>
+      <p class="text-muted small mt-2 mb-0">
+        값을 고친 뒤 [다시 검사]로 확인하세요. 이미 저장된 번호(노란색)는 저장할 때 자동으로 건너뜁니다.
+        <template v-if="batch.allow_duplicate_override">같은 날 같은 곳에 실제로 두 번 출장 갔다면 "중복 아님 — 저장"을 체크하세요.</template>
+      </p>
     </div>
   </div>
 </template>

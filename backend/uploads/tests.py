@@ -285,3 +285,122 @@ class DuplicateRowsSkipValidationTests(APITestCase):
         self.assertEqual(again.data["summary"]["error_rows"], 0)
         self.assertEqual(again.data["summary"]["duplicate_rows"], 1)
         self.assertEqual(self.client.post(f"/api/uploads/{again.data['id']}/confirm/").data["saved_count"], 0)
+
+
+# ---------------------------------------------------------------- 출장보고서 PDF (Phase 8)
+from service.models import RequesterRegion, TripReport
+
+TRIP_SAMPLE_PDF = os.path.join(settings.BASE_DIR.parent, "samples", "서비스팀 출장보고서 샘플.pdf")
+
+
+def trip_rows(**overrides):
+    values = {"start_date": "2026-09-29", "end_date": "2026-09-30", "requester": "가람산업단지", "region": "충청북도",
+              "paid_type": "유상", "author": "김가상 대리", "companions": "김가상 대리\n이가상 사원",
+              "products": "AVA03 | 380V/3Ph/60Hz, 29rpm | A80018377702 | 1", "parts": "Main Board\nPower Board",
+              "work_type": "수리", "requester_type": "검색 불가", "extra_trip": "없음", "purpose": "가상 A/S",
+              "fault_description": "1. 메인보드 고장", "work_description": "1. 메인보드 교체", "work_result": "정상작동"}
+    values.update(overrides)
+    return [{"row_no": 1, "sheet": "1쪽", "values": values}]
+
+
+class TripReportUploadTests(APITestCase):
+    def setUp(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "svc_leader", password="x", role=User.Role.LEADER, view_teams=[S], edit_teams=[S]))
+
+    def upload(self, rows):
+        with mock.patch("uploads.handlers.trip_report_pdf.TripReportPdfHandler.parse", return_value=(rows, 0)):
+            return self.client.post("/api/uploads/", {"kind": "trip_report_pdf",
+                                                      "file": SimpleUploadedFile("출장보고서.pdf", b"%PDF")},
+                                    format="multipart")
+
+    def test_save_report_with_children_and_remember_region(self):
+        res = self.upload(trip_rows())
+        self.assertEqual(res.data["summary"]["to_save"], 1)
+        region_col = next(c for c in res.data["columns"] if c["key"] == "region")
+        self.assertIn("제주특별자치도", region_col["choices"])  # 선택 목록으로 보여줌
+        self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
+
+        report = TripReport.objects.get()
+        self.assertEqual((report.region, report.paid_type, report.author), ("충청북도", "유상", "김가상 대리"))
+        self.assertEqual(sorted(c.name for c in report.companions.all()), ["김가상 대리", "이가상 사원"])
+        product = report.products.get()
+        self.assertEqual((product.model_name, product.spec, product.serial_no_raw, product.quantity),
+                         ("AVA03", "380V/3Ph/60Hz, 29rpm", "A80018377702", 1))
+        self.assertEqual(sorted(p.part_name for p in report.parts.all()), ["Main Board", "Power Board"])
+        self.assertEqual(RequesterRegion.objects.get(requester="가람산업단지").region, "충청북도")
+
+    def test_duplicate_by_start_date_and_requester(self):
+        """기준: 출장 시작일 + 요청처 — 작성자·동행자가 달라도 같은 출장으로 본다"""
+        res = self.upload(trip_rows())
+        self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
+        changed = self.upload(trip_rows(author="박다른 과장", companions="최다른 사원"))
+        self.assertEqual(changed.data["summary"]["duplicate_rows"], 1)
+        self.assertTrue(changed.data["allow_duplicate_override"])
+        other_day = self.upload(trip_rows(start_date="2026-10-01", end_date="2026-10-02"))
+        self.assertEqual(other_day.data["summary"]["to_save"], 1)
+
+    def test_confirm_not_duplicate_saves_second_trip(self):
+        """같은 날 같은 곳에 실제로 두 번 간 경우: '중복 아님'을 체크하면 저장"""
+        res = self.upload(trip_rows())
+        self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
+        again = self.upload(trip_rows(author="박다른 과장"))
+        row = again.data["rows"][0]
+        self.assertTrue(row["matches_existing"])
+        res = self.client.patch(f"/api/uploads/{again.data['id']}/",
+                                {"rows": [{"id": row["id"], "allow_duplicate": True}]}, format="json")
+        self.assertEqual(res.data["summary"]["to_save"], 1)
+        self.assertEqual(self.client.post(f"/api/uploads/{again.data['id']}/confirm/").data["saved_count"], 1)
+        self.assertEqual(TripReport.objects.count(), 2)
+
+    def test_two_pages_same_trip_in_one_file(self):
+        rows = trip_rows() + [{**trip_rows()[0], "row_no": 2}]
+        res = self.upload(rows)
+        second = res.data["rows"][1]
+        self.assertIn("start_date", second["errors"])  # 파일 안 중복
+        res = self.client.patch(f"/api/uploads/{res.data['id']}/",
+                                {"rows": [{"id": second["id"], "allow_duplicate": True}]}, format="json")
+        self.assertEqual(res.data["summary"]["to_save"], 2)
+
+    def test_validation(self):
+        errors = self.upload(trip_rows(region="", paid_type="반반", end_date="2026-09-01",
+                                       parts="Magnetic Contactor (TR Cont…", products="AVA03 | | | 0"))
+        errors = errors.data["rows"][0]["errors"]
+        self.assertEqual(set(errors), {"region", "paid_type", "end_date", "parts", "products"})
+
+    def test_production_leader_cannot_upload_trip_report(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "prod", password="x", role=User.Role.LEADER, view_teams=[P], edit_teams=[P]))
+        self.assertEqual(self.upload(trip_rows()).status_code, 403)
+
+
+@unittest.skipUnless(os.path.exists(TRIP_SAMPLE_PDF), "실제 샘플 PDF가 없는 PC에서는 건너뜀 (samples/는 Git 제외)")
+class RealSampleTripReportTests(APITestCase):
+    def test_parse_real_sample(self):
+        from .handlers import HANDLERS
+
+        RequesterRegion.objects.create(requester="가람산업단지", region="충청북도")  # 대응표에 있으면 자동
+        with open(TRIP_SAMPLE_PDF, "rb") as f:
+            rows, _ = HANDLERS["trip_report_pdf"].parse(f)
+        v = rows[0]["values"]
+        self.assertEqual((v["start_date"], v["end_date"], v["requester"], v["region"], v["paid_type"]),
+                         ("2026-09-29", "2026-09-30", "가람산업단지", "충청북도", "유상"))
+        self.assertEqual(v["products"], "AVA03 | 380V/3Ph/60Hz, 29rpm | A80018377702 | 1")
+        self.assertEqual(v["parts"].split("\n")[1], "Main Board")
+        self.assertTrue(v["fault_description"].startswith("현장도착 후"))
+
+
+class OverrideNotAllowedForUniqueNumbersTests(APITestCase):
+    """일련번호처럼 고유 번호가 기준인 종류는 '중복 아님'을 보내도 무시하고 건너뛴다"""
+
+    def test_manufacturing_ignores_allow_duplicate(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "p", password="x", role=User.Role.LEADER, view_teams=[P], edit_teams=[P]))
+        first = self.client.post("/api/uploads/", {"kind": "manufacturing_excel", "file": excel_file()}, format="multipart")
+        self.client.post(f"/api/uploads/{first.data['id']}/confirm/")
+        again = self.client.post("/api/uploads/", {"kind": "manufacturing_excel", "file": excel_file()}, format="multipart")
+        self.assertFalse(again.data["allow_duplicate_override"])
+        changes = [{"id": r["id"], "allow_duplicate": True} for r in again.data["rows"]]
+        res = self.client.patch(f"/api/uploads/{again.data['id']}/", {"rows": changes}, format="json")
+        self.assertEqual(res.data["summary"]["duplicate_rows"], 2)
+        self.assertEqual(self.client.post(f"/api/uploads/{again.data['id']}/confirm/").data["saved_count"], 0)

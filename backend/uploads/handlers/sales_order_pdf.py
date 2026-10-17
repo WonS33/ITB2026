@@ -60,7 +60,7 @@ class SalesOrderPdfHandler(UploadHandler):
         ("due_date", "납기일"),
         ("order_date", "수주일"),
         ("business_type_raw", "사업구분"),
-        ("industry", "산업 분야"),
+        ("industry", "산업 분야", {"choices": INDUSTRIES}),
         ("customer", "판매처"),
         ("final_orderer", "최종발주처/EPC"),
         ("project_name", "사업명"),
@@ -73,7 +73,7 @@ class SalesOrderPdfHandler(UploadHandler):
         ("order_no", "수주번호"),
         ("order_doc_no", "수주서류 번호"),
         ("delivery_date", "납품일/출장일"),
-        ("note", "비고"),
+        ("note", "비고", {"multiline": True}),
     ]
 
     def parse(self, file):
@@ -126,7 +126,7 @@ class SalesOrderPdfHandler(UploadHandler):
                     errors[field] = "납기일이 없습니다 (판매량 집계 기준)."
             except ValueError:
                 errors[field] = "날짜 형식: YYYY-MM-DD"
-        for key, _label in self.columns:
+        for key, *_ in self.columns:
             if TRUNCATED in values.get(key, "") and key not in errors:
                 errors[key] = "PDF에서 잘린 값(…)입니다. 전체 값으로 고쳐 주세요."
         for key, model in [(k, SalesOrder) for k in ORDER_KEYS] + [(k, SalesOrderItem) for k in ITEM_FIELDS]:

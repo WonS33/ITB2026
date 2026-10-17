@@ -186,7 +186,7 @@ class ManufacturingExcelHandler(UploadHandler):
                     values[field] = _display_text(cell).lstrip("#")  # #26006 → 26006
                 else:
                     values[field] = _display_text(cell)
-            for key, _label in self.columns:
+            for key, *_ in self.columns:
                 values.setdefault(key, "")
             rows.append({"row_no": r, "sheet": sheet.title, "values": values})
         return rows, skipped
@@ -210,7 +210,7 @@ class ManufacturingExcelHandler(UploadHandler):
         if bush and not re.fullmatch(r"\d{6}", bush):
             errors["bush_machining"] = "숫자 6자리 (예: 301008)"
 
-        for key, _label in self.columns:
+        for key, *_ in self.columns:
             limit = ManufacturingRecord._meta.get_field(key).max_length
             if limit and len(values.get(key, "")) > limit and key not in errors:
                 errors[key] = f"{limit}자 이하로 입력해 주세요."
@@ -227,7 +227,7 @@ class ManufacturingExcelHandler(UploadHandler):
                 v[field] = parse_iso_date(v[field])
             records.append(
                 ManufacturingRecord(
-                    **{k: v[k] for k, _label in self.columns},
+                    **{k: v[k] for k, *_ in self.columns},
                     serial_short=v["serial_full"][-4:],
                     source_sheet=row.get("sheet", ""),
                     created_by=user,
