@@ -77,3 +77,4 @@
 ## 변경 기록
 
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
+- 2026-10-18: Phase 2 구현 — 기간 선택 부품(`frontend/src/components/PeriodSelector.vue`), 기간 계산(`backend/common/periods.py`). 당월 보기에서도 월을 고를 수 있게 함. 선택한 기간은 팀 화면을 옮겨도 유지됨
