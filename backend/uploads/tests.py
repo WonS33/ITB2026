@@ -261,16 +261,26 @@ class SalesOrderUploadTests(APITestCase):
 
 @unittest.skipUnless(os.path.exists(SAMPLE_PDF), "실제 샘플 PDF가 없는 PC에서는 건너뜀 (samples/는 Git 제외)")
 class RealSampleSalesOrderTests(APITestCase):
+    """실제 샘플 PDF 읽기 확인. 실제 기업 값은 코드에 적지 않고 형식만 확인한다 (CLAUDE.md 7절)."""
+
     def test_parse_real_sample(self):
+        import re
+
+        from production.industry_map import INDUSTRIES
+
         from .handlers import HANDLERS
 
         with open(SAMPLE_PDF, "rb") as f:
             rows, _ = HANDLERS["sales_order_pdf"].parse(f)
         v = rows[0]["values"]
-        self.assertEqual((v["sales_no"], v["due_date"], v["product_name"], v["quantity"]),
-                         ("NTK-SO-260000", "2026-03-13", "제수 150A: NTI-03", "3"))
-        self.assertEqual((v["industry"], v["order_doc_no"], v["flange"]), ("상하수도", "26024", "F10A"))
-
+        self.assertRegex(v["sales_no"], r"^NTK-SO-\d+$")  # 숫자 특수 코드가 복원됨
+        self.assertRegex(v["due_date"], r"^\d{4}-\d{2}-\d{2}$")
+        self.assertRegex(v["order_doc_no"], r"^\d+$")  # "#번호 파일이름…" → 번호만
+        self.assertRegex(v["quantity"], r"^[1-9]\d*$")
+        self.assertIn(":", v["product_name"])  # ":" 특수 코드가 복원됨 (예: 제수 150A: NTI-03)
+        self.assertIn(v["industry"], INDUSTRIES)
+        self.assertTrue(v["customer"].endswith("…"))  # 잘린 값이 그대로 잡혀 확인 화면에서 오류로 표시됨
+        self.assertTrue(re.match(r"^F\d+", v["flange"]))
 
 class DuplicateRowsSkipValidationTests(APITestCase):
     """이미 저장된 판매번호의 행은 오류(잘린 값 등)를 표시하지 않고 '중복(건너뜀)'으로만 본다"""
@@ -376,19 +386,28 @@ class TripReportUploadTests(APITestCase):
 
 @unittest.skipUnless(os.path.exists(TRIP_SAMPLE_PDF), "실제 샘플 PDF가 없는 PC에서는 건너뜀 (samples/는 Git 제외)")
 class RealSampleTripReportTests(APITestCase):
+    """실제 샘플 PDF 읽기 확인. 실제 기업 값은 코드에 적지 않고 형식만 확인한다 (CLAUDE.md 7절)."""
+
     def test_parse_real_sample(self):
         from .handlers import HANDLERS
+        from .handlers.trip_report_pdf import PAID_TYPES
 
-        RequesterRegion.objects.create(requester="가람산업단지", region="충청북도")  # 대응표에 있으면 자동
+        handler = HANDLERS["trip_report_pdf"]
         with open(TRIP_SAMPLE_PDF, "rb") as f:
-            rows, _ = HANDLERS["trip_report_pdf"].parse(f)
-        v = rows[0]["values"]
-        self.assertEqual((v["start_date"], v["end_date"], v["requester"], v["region"], v["paid_type"]),
-                         ("2026-09-29", "2026-09-30", "가람산업단지", "충청북도", "유상"))
-        self.assertEqual(v["products"], "AVA03 | 380V/3Ph/60Hz, 29rpm | A80018377702 | 1")
-        self.assertEqual(v["parts"].split("\n")[1], "Main Board")
-        self.assertTrue(v["fault_description"].startswith("현장도착 후"))
+            v = handler.parse(f)[0][0]["values"]
+        self.assertRegex(v["start_date"], r"^\d{4}-\d{2}-\d{2}$")  # 숫자 특수 코드가 복원됨
+        self.assertGreaterEqual(v["end_date"], v["start_date"])
+        self.assertIn(v["paid_type"], PAID_TYPES)
+        self.assertTrue(v["requester"] and v["author"])
+        self.assertEqual(v["region"], "")  # 대응표에 없으면 비어 있음 → 확인 화면에서 고름
+        self.assertRegex(v["products"], r"^\w+ \| .+, .+ \| \w+ \| \d+$")  # "," 특수 코드 복원, 표 4칸
+        self.assertTrue(any(line.endswith("…") for line in v["parts"].split("\n")))  # 잘린 부품명이 잡힘
+        self.assertGreater(v["fault_description"].count("\n"), 1)  # 여러 줄 값
 
+        # 대응표에 요청처가 있으면 시·도를 자동으로 채운다
+        RequesterRegion.objects.create(requester=v["requester"], region="충청북도")
+        with open(TRIP_SAMPLE_PDF, "rb") as f:
+            self.assertEqual(handler.parse(f)[0][0]["values"]["region"], "충청북도")
 
 class OverrideNotAllowedForUniqueNumbersTests(APITestCase):
     """일련번호처럼 고유 번호가 기준인 종류는 '중복 아님'을 보내도 무시하고 건너뛴다"""
