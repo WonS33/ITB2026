@@ -6,6 +6,7 @@ from rest_framework.views import APIView
 from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
+from .due_calendar import due_calendar
 from .metrics import production_summary
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
@@ -83,3 +84,11 @@ class SerialDetailView(ProductionApiView):
     def get(self, request, serial_full):
         record = get_object_or_404(ManufacturingRecord, serial_full=serial_full.upper())
         return Response(serial_detail(record))
+
+
+class DueCalendarView(ProductionApiView):
+    """GET /api/production/due-calendar/?year=2026&month=10 — 납기 캘린더 (날짜별·수주번호별)"""
+
+    def get(self, request):
+        period = period_from_params({**request.query_params.dict(), "period": "month"})
+        return Response(due_calendar(period.year, period.months[0]))

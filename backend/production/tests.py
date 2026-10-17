@@ -147,3 +147,35 @@ class SerialLookupTests(APITestCase):
         other = User.objects.create_user("svc", password="x", role=User.Role.MEMBER, view_teams=[S])
         self.client.force_authenticate(other)
         self.assertEqual(self.client.get("/api/production/serials/", {"q": "0001"}).status_code, 403)
+
+
+class DueCalendarTests(APITestCase):
+    """specs/05-production.md 3절 납기 캘린더"""
+
+    def setUp(self):
+        user = User.objects.create_user("viewer", password="x", role=User.Role.MEMBER, view_teams=[P])
+        self.client.force_authenticate(user)
+        for i, (due, po, customer) in enumerate([
+            (date(2026, 10, 5), "26006", "가람"), (date(2026, 10, 5), "26006", "가람"),
+            (date(2026, 10, 5), "26007", "나래"), (date(2026, 10, 20), "", "다온"),
+            (date(2026, 11, 1), "26008", "라온"),  # 다른 달 → 빠짐
+        ], start=1):
+            ManufacturingRecord.objects.create(serial_full=f"N8226{i:04d}", serial_short=f"{i:04d}",
+                                               due_date=due, po_no=po, customer=customer)
+
+    def test_groups_by_date_and_order_number(self):
+        res = self.client.get("/api/production/due-calendar/", {"year": 2026, "month": 10})
+        self.assertEqual(res.status_code, 200)
+        days = {d["date"]: d["orders"] for d in res.data["days"]}
+        self.assertEqual(list(days), ["2026-10-05", "2026-10-20"])
+        first = days["2026-10-05"]
+        self.assertEqual([(o["po_no"], o["quantity"]) for o in first], [("26006", 2), ("26007", 1)])
+        self.assertEqual(first[0]["customers"], ["가람"])
+        self.assertEqual(days["2026-10-20"][0]["po_no"], "")  # 수주번호 없음도 표시
+
+    def test_invalid_month_400(self):
+        self.assertEqual(self.client.get("/api/production/due-calendar/", {"year": 2026, "month": 13}).status_code, 400)
+
+    def test_service_only_user_403(self):
+        self.client.force_authenticate(User.objects.create_user("svc", password="x", view_teams=[S]))
+        self.assertEqual(self.client.get("/api/production/due-calendar/").status_code, 403)
