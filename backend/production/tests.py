@@ -102,3 +102,48 @@ class ProductionApiTests(APITestCase):
         self.assertEqual(res.data["period"]["label"], "2026년 10월")
         self.assertEqual(res.data["production"]["actual"], 4)
         self.assertEqual(res.data["production"]["achievement_rate"], 40.0)
+
+
+class SerialLookupTests(APITestCase):
+    """specs/05-production.md 2절 일련번호 조회"""
+
+    def setUp(self):
+        user = User.objects.create_user("viewer", password="x", role=User.Role.MEMBER, view_teams=[P])
+        self.client.force_authenticate(user)
+        ManufacturingRecord.objects.create(
+            serial_full="N82260001", serial_short="0001", model_name="NTI-04", bush_machining="301008",
+            rpm="29", power="380/3/60", manufactured_date=date(2026, 1, 9), inspection_no="NTK26001",
+            po_no="26006", customer="가람상수도사업소", due_date=date(2026, 1, 15), note="방폭",
+        )
+        ManufacturingRecord.objects.create(serial_full="M82250001", serial_short="0001",
+                                           manufactured_date=date(2025, 3, 1))
+
+    def search(self, q):
+        return self.client.get("/api/production/serials/", {"q": q}).data["results"]
+
+    def test_search_by_4_digits_returns_all_matches(self):
+        results = self.search("0001")
+        self.assertEqual([r["serial_full"] for r in results], ["N82260001", "M82250001"])  # 최근 제조 순
+        self.assertEqual(len(self.search("1")), 2)  # 1 → 0001
+
+    def test_search_by_full_number(self):
+        self.assertEqual([r["serial_full"] for r in self.search("n82260001")], ["N82260001"])
+        self.assertEqual(self.search("N82269999"), [])
+        self.assertEqual(self.search(""), [])
+
+    def test_detail_has_11_items(self):
+        res = self.client.get("/api/production/serials/N82260001/")
+        self.assertEqual(res.status_code, 200)
+        items = res.data["items"]
+        self.assertEqual([i["no"] for i in items], list(range(1, 12)))
+        self.assertEqual(items[0]["value"]["부시 가공"], "Ø30x10x08")
+        self.assertEqual(items[4]["value"]["PO번호"], "#26006")
+        self.assertEqual(items[9]["value"], "2026-01-15")
+
+    def test_detail_not_found_404(self):
+        self.assertEqual(self.client.get("/api/production/serials/N00000000/").status_code, 404)
+
+    def test_service_only_user_cannot_search(self):
+        other = User.objects.create_user("svc", password="x", role=User.Role.MEMBER, view_teams=[S])
+        self.client.force_authenticate(other)
+        self.assertEqual(self.client.get("/api/production/serials/", {"q": "0001"}).status_code, 403)

@@ -13,7 +13,7 @@ MODELS = ["NTI-01", "NTI-02", "NTI-03", "NTI-04", "NTI-05"]
 
 
 class Command(BaseCommand):
-    help = "개발·시연용 가상 제조내역과 연간 목표 생산량을 만든다 (기존 가상 데이터는 지우고 다시 만듦)."
+    help = "개발·시연용 가상 제조내역과 연간 목표 생산량을 만든다 (그 연도의 기존 가상 데이터는 지우고 다시 만듦)."
 
     def add_arguments(self, parser):
         parser.add_argument("--year", type=int, default=date.today().year)
@@ -21,7 +21,9 @@ class Command(BaseCommand):
 
     def handle(self, *args, year, target, **options):
         rng = random.Random(year)  # 실행할 때마다 같은 가상 데이터가 나오도록 고정
-        deleted, _ = ManufacturingRecord.objects.filter(source_sheet=VIRTUAL_SHEET).delete()
+        deleted, _ = ManufacturingRecord.objects.filter(
+            source_sheet=VIRTUAL_SHEET, manufactured_date__year=year
+        ).delete()
 
         yy = str(year)[2:]
         last_month = date.today().month if year == date.today().year else 12

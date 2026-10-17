@@ -91,7 +91,8 @@ npm run dev          # 브라우저: http://localhost:5173  (/api 요청은 Djan
 python manage.py makemigrations; python manage.py migrate   # 모델을 바꾼 뒤
 python manage.py test                                       # 백엔드 테스트
 python manage.py seed_users                                 # 가상 계정 6개 생성 (비밀번호: .env의 SEED_USER_PASSWORD)
-python manage.py seed_production                            # 가상 제조내역·목표 생산량 (다시 실행하면 가상 데이터만 새로 만듦)
+python manage.py seed_production                            # 가상 제조내역·목표 생산량 (그 연도 가상 데이터만 새로 만듦)
+python manage.py seed_production --year 2025 --target 280   # 다른 연도 가상 데이터 (일련번호 4자리 중복 검색 시연용)
 python manage.py make_sample_files                          # 시연용 가상 업로드 파일 → backend/sample_data/
 npm run build                                               # 프론트 빌드 오류 확인
 ```

@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import FileUpload from '@/components/FileUpload.vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
+import SerialSearch from '@/components/production/SerialSearch.vue'
 import StatCard from '@/components/StatCard.vue'
 import TargetForm from '@/components/production/TargetForm.vue'
 import { canEdit } from '@/auth'
@@ -66,6 +67,8 @@ watch(period, load, { deep: true, immediate: true })
         ※ 당월·분기 목표는 "연간 목표 ÷ 12 × 개월 수"로 나눈 임시 기준입니다 (기업 확인 필요).
       </p>
     </template>
+
+    <SerialSearch />
 
     <!-- 업로드는 생산팀 수정 권한자에게만 보인다 (백엔드 API에서도 권한을 다시 확인함) -->
     <FileUpload

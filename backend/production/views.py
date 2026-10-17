@@ -1,3 +1,4 @@
+from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -6,8 +7,9 @@ from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
 from .metrics import production_summary
-from .models import AnnualProductionTarget
+from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
+from .serials import SEARCH_LIMIT, search_serials, serial_detail
 
 
 class ProductionApiView(APIView):
@@ -55,3 +57,29 @@ class ProductionDashboardView(ProductionApiView):
                 "production": production_summary(period),
             }
         )
+
+
+class SerialSearchView(ProductionApiView):
+    """GET /api/production/serials/?q=0001 — 4자리 또는 전체 일련번호로 검색"""
+
+    def get(self, request):
+        records = search_serials(request.query_params.get("q"))
+        results = [
+            {
+                "serial_full": r.serial_full,
+                "model_name": r.model_name,
+                "manufactured_date": r.manufactured_date,
+                "customer": r.customer,
+                "project_name": r.project_name,
+            }
+            for r in records
+        ]
+        return Response({"results": results, "limit": SEARCH_LIMIT})
+
+
+class SerialDetailView(ProductionApiView):
+    """GET /api/production/serials/{serial_full}/ — 조회 항목 11개"""
+
+    def get(self, request, serial_full):
+        record = get_object_or_404(ManufacturingRecord, serial_full=serial_full.upper())
+        return Response(serial_detail(record))
