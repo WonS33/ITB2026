@@ -2,7 +2,7 @@
 // 판매 실적: 산업 분야별(비중 도넛 + 순위 막대), 거래처별·제품별(순위 막대)
 import { computed } from 'vue'
 import RankingBar from '@/components/RankingBar.vue'
-import IndustryShare from '@/components/production/IndustryShare.vue'
+import ShareDoughnut from '@/components/ShareDoughnut.vue'
 import { industryColor } from '@/charts'
 
 const props = defineProps({
@@ -22,7 +22,7 @@ const industries = computed(() => props.sales.by_industry.map((i) => ({ ...i, co
       <div class="col-lg-6">
         <div class="card h-100"><div class="card-body">
           <h3 class="h6">산업 분야별 비중</h3>
-          <IndustryShare :items="sales.by_industry" :total="sales.total" />
+          <ShareDoughnut :items="sales.by_industry" :total="sales.total" :color-of="industryColor" name-header="분야" />
         </div></div>
       </div>
       <div class="col-lg-6">

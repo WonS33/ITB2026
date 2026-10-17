@@ -37,7 +37,10 @@ class Command(BaseCommand):
         records, seq = [], 5001  # 실제 샘플 번호(0001~)와 겹치지 않게 5001번부터
         for month in range(1, last_month + 1):
             for _ in range(rng.randint(15, 35)):
-                made = date(year, month, rng.randint(1, 28))
+                # 제조일은 오늘을 넘지 않게 (이번 달은 오늘까지만). 납기일은 미래여도 정상
+                today = date.today()
+                last_day = today.day if (year, month) == (today.year, today.month) else 28
+                made = date(year, month, rng.randint(1, last_day))
                 due = made + timedelta(days=rng.randint(5, 20))
                 short = f"{seq:04d}"
                 records.append(

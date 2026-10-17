@@ -94,6 +94,7 @@ python manage.py seed_users                                 # 가상 계정 6개
 python manage.py seed_production                            # 가상 제조내역·목표 생산량 (그 연도 가상 데이터만 새로 만듦)
 python manage.py seed_production --year 2025 --target 280   # 다른 연도 가상 데이터 (일련번호 4자리 중복 검색 시연용)
 python manage.py make_sample_files                          # 시연용 가상 업로드 파일 → backend/sample_data/
+python manage.py seed_service                               # 가상 출장보고서 (--year 2025 로 다른 연도)
 npm run build                                               # 프론트 빌드 오류 확인
 ```
 

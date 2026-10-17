@@ -19,3 +19,6 @@ export function industryColor(name) {
 }
 
 export const percent = (part, total) => (total ? Math.round((part / total) * 1000) / 10 : 0)
+
+// 유상·무상 고정 색 (검증된 팔레트의 1·2번)
+export const paidColor = (name) => (name === '유상' ? SERIES_COLORS[0] : name === '무상' ? SERIES_COLORS[1] : OTHER_COLOR)
