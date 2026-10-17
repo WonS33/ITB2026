@@ -70,3 +70,4 @@
 ## 변경 기록
 
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
+- 2026-10-18: 계정 API 구현. 로그인 실패는 400. `GET /api/auth/me/`가 CSRF 쿠키도 내려준다. 미로그인 401은 `accounts.authentication.SessionAuthentication401`로 처리

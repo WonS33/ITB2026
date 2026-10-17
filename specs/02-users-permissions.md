@@ -99,3 +99,4 @@
 
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
 - 2026-10-18: 팀 목록 저장 방식을 ArrayField로 결정
+- 2026-10-18: Phase 1 구현 — 세션 로그인, 팀 권한 검사(`accounts/permissions.py`의 TeamPermission: 조회=열람 권한, 입력=수정 권한), 가상 계정 명령(`seed_users`). 관리자 페이지 화면을 만들기 전까지 계정은 Django 기본 관리 화면(`/django-admin/`)에서 관리한다

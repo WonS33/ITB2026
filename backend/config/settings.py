@@ -147,10 +147,14 @@ MAILERS = {
 }
 
 
+# Vite 개발 서버(5173)에서 오는 요청을 CSRF 검사에서 신뢰할 출처로 등록
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
 # Django REST Framework: 세션 로그인을 사용하고, 기본으로 모든 API에 로그인을 요구한다
+# (미로그인 401 / 권한 없음 403 — specs/08-api.md)
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
+        'accounts.authentication.SessionAuthentication401',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
         'rest_framework.permissions.IsAuthenticated',
