@@ -4,11 +4,15 @@
 - 기간 목표 생산량 = 연간 목표 ÷ 12 × 기간 개월 수   ← 기업 확인 전 임시 기준
 - 생산량 달성률(%) = 기간 생산량 ÷ 기간 목표 생산량 × 100
 - 부족치(대) = 기간 목표 생산량 − 기간 생산량 (0보다 작으면 0)
+- 산업 분야별·거래처별·제품별 판매량(대) = 수주서 제품 수량 합계
+  (기간 기준 날짜: 수주서 납기일 ← 기업 확인 전 임시 기준, 거래처: 수주서 판매처)
 """
 
 from fractions import Fraction
 
-from .models import AnnualProductionTarget, ManufacturingRecord
+from django.db.models import Sum
+
+from .models import AnnualProductionTarget, ManufacturingRecord, SalesOrderItem
 
 
 def production_summary(period):
@@ -37,4 +41,19 @@ def production_summary(period):
         "period_target": round(float(period_target), 1),
         "achievement_rate": rate,
         "shortfall": round(float(shortfall), 1),
+    }
+
+
+def _ranking(items, field):
+    rows = items.values(field).annotate(quantity=Sum("quantity")).order_by("-quantity", field)
+    return [{"name": r[field] or "(미입력)", "quantity": r["quantity"]} for r in rows]
+
+
+def sales_summary(period):
+    items = SalesOrderItem.objects.filter(order__due_date__range=(period.start, period.end))
+    return {
+        "total": items.aggregate(total=Sum("quantity"))["total"] or 0,
+        "by_industry": _ranking(items, "order__industry"),
+        "by_customer": _ranking(items, "order__customer"),
+        "by_product": _ranking(items, "product_name"),
     }

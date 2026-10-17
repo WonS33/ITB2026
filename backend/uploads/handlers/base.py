@@ -34,6 +34,9 @@ class UploadHandler:
     def existing_keys(self, keys):
         raise NotImplementedError
 
+    def validate_all(self, active_rows):
+        """여러 행을 함께 봐야 하는 검사 (필요한 종류만 다시 정의). row["errors"]에 직접 추가한다."""
+
     def save(self, rows, user):
         """오류·중복·제외가 아닌 행(rows)을 DB에 저장하고 저장한 개수를 돌려준다."""
         raise NotImplementedError
@@ -52,8 +55,10 @@ def check_rows(handler, rows):
             errors[handler.key_field] = "파일 안에서 같은 번호가 이미 나왔습니다."
         if key:
             seen.add(key)
-        row["errors"] = errors
         row["duplicate"] = bool(key and key in existing)  # 이미 DB에 있음 → 저장 때 건너뜀
+        # 건너뛸 행은 고칠 필요가 없으므로 오류를 표시하지 않는다
+        row["errors"] = {} if row["duplicate"] else errors
+    handler.validate_all([r for r in active if not r["duplicate"]])
     for row in rows:
         if row.get("excluded"):
             row["errors"], row["duplicate"] = {}, False

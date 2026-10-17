@@ -8,7 +8,7 @@ import re
 
 from django.db.models import Q
 
-from .models import ManufacturingRecord
+from .models import ManufacturingRecord, SalesOrderItem
 
 SEARCH_LIMIT = 50
 
@@ -35,14 +35,26 @@ def _date(value):
     return value.isoformat() if value else ""
 
 
+def flanges_for(record):
+    """플랜지 보완: 제조내역 PO번호와 같은 "수주서류 번호"를 가진 수주서의 Flange 값
+
+    ⚠️ 두 파일을 잇는 기준 번호는 기업 확인 전이다. 샘플에서 형식이 같아(#26006 / #26024) 임시로 이렇게 잇는다.
+    """
+    if not record.po_no:
+        return None
+    values = SalesOrderItem.objects.filter(order__order_doc_no=record.po_no).exclude(flange="")
+    flanges = sorted(set(values.values_list("flange", flat=True)))
+    return ", ".join(flanges) or None
+
+
 def serial_detail(record):
     spec = {
         "모델명": record.model_name,
         "부시 가공": format_bush(record.bush_machining),
         "rpm": record.rpm,
         "전원": record.power,
-        # 플랜지는 제조내역 엑셀에 열이 없고 수주서 PDF에만 있다 → 수주서 업로드(Phase 7) 후 보완
-        "Flange": None,
+        # 플랜지는 제조내역 엑셀에 열이 없고 수주서 PDF에만 있다 → 수주서에서 보완 (없으면 None)
+        "Flange": flanges_for(record),
     }
     order_numbers = {
         "PO번호": f"#{record.po_no}" if record.po_no else "",

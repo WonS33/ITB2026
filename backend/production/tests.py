@@ -179,3 +179,41 @@ class DueCalendarTests(APITestCase):
     def test_service_only_user_403(self):
         self.client.force_authenticate(User.objects.create_user("svc", password="x", view_teams=[S]))
         self.assertEqual(self.client.get("/api/production/due-calendar/").status_code, 403)
+
+
+class SalesSummaryTests(APITestCase):
+    """specs/09-metrics.md 3절 판매량 (기준 날짜: 수주서 납기일)"""
+
+    def setUp(self):
+        from .models import SalesOrder, SalesOrderItem
+
+        def order(no, industry, customer, due, items):
+            o = SalesOrder.objects.create(sales_no=no, industry=industry, customer=customer, due_date=due,
+                                          order_doc_no=no[-5:])
+            for name, qty, flange in items:
+                SalesOrderItem.objects.create(order=o, product_name=name, quantity=qty, flange=flange)
+
+        order("NTK-SO-26006", "상하수도", "가람", date(2026, 10, 3), [("제수 150A", 3, "F10A"), ("제수 200A", 1, "")])
+        order("NTK-SO-26007", "발전소", "다온", date(2026, 10, 9), [("제수 150A", 2, "F12")])
+        order("NTK-SO-26008", "상하수도", "나래", date(2026, 11, 1), [("제수 150A", 9, "")])  # 11월 → 10월 집계 제외
+
+    def test_rankings(self):
+        from .metrics import sales_summary
+
+        s = sales_summary(make_period("month", 2026, month=10))
+        self.assertEqual(s["total"], 6)
+        self.assertEqual(s["by_industry"], [{"name": "상하수도", "quantity": 4}, {"name": "발전소", "quantity": 2}])
+        self.assertEqual(s["by_customer"][0], {"name": "가람", "quantity": 4})
+        self.assertEqual(s["by_product"], [{"name": "제수 150A", "quantity": 5}, {"name": "제수 200A", "quantity": 1}])
+
+    def test_quarter_includes_november(self):
+        from .metrics import sales_summary
+
+        self.assertEqual(sales_summary(make_period("quarter", 2026, quarter=4))["total"], 15)
+
+    def test_flange_supplement_by_order_doc_no(self):
+        from .serials import flanges_for
+
+        record = ManufacturingRecord(serial_full="N82260001", po_no="26006")
+        self.assertEqual(flanges_for(record), "F10A")
+        self.assertIsNone(flanges_for(ManufacturingRecord(serial_full="N82260002", po_no="99999")))

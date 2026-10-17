@@ -2,6 +2,7 @@
 import { ref, watch } from 'vue'
 import FileUpload from '@/components/FileUpload.vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
+import SalesSection from '@/components/production/SalesSection.vue'
 import SerialSearch from '@/components/production/SerialSearch.vue'
 import DueCalendar from '@/components/production/DueCalendar.vue'
 import StatCard from '@/components/StatCard.vue'
@@ -67,6 +68,8 @@ watch(period, load, { deep: true, immediate: true })
       <p class="text-muted small">
         ※ 당월·분기 목표는 "연간 목표 ÷ 12 × 개월 수"로 나눈 임시 기준입니다 (기업 확인 필요).
       </p>
+
+      <SalesSection :sales="data.sales" :label="data.period.label" />
     </template>
 
     <SerialSearch />
@@ -79,6 +82,14 @@ watch(period, load, { deep: true, immediate: true })
       title="제조내역 엑셀 업로드"
       accept=".xlsx"
       help="제조내역 엑셀(.xlsx)을 올리면 추출 결과를 먼저 보여줍니다. 확인·수정한 뒤 [저장]을 눌러야 반영됩니다. 이미 저장된 일련번호는 건너뜁니다."
+      @saved="load"
+    />
+    <FileUpload
+      v-if="canEdit('production')"
+      kind="sales_order_pdf"
+      title="수주서 PDF 업로드"
+      accept=".pdf"
+      help="수주서 PDF(1쪽 = 1건)를 올리면 제품 1개를 1행으로 보여줍니다. PDF에서 잘린 값(…)은 빨간색으로 표시되니 전체 값으로 고친 뒤 저장하세요. 이미 저장된 판매번호는 건너뜁니다."
       @saved="load"
     />
   </div>

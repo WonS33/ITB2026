@@ -7,7 +7,7 @@ from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
 from .due_calendar import due_calendar
-from .metrics import production_summary
+from .metrics import production_summary, sales_summary
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
 from .serials import SEARCH_LIMIT, search_serials, serial_detail
@@ -56,6 +56,7 @@ class ProductionDashboardView(ProductionApiView):
             {
                 "period": {"kind": period.kind, "label": period.label, "start": period.start, "end": period.end},
                 "production": production_summary(period),
+                "sales": sales_summary(period),
             }
         )
 

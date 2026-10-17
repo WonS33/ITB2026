@@ -87,7 +87,8 @@
 |---|---|---|
 | `sales_no` (unique, 확인 필요) | 판매번호 | 예: NTK-SO-260000 |
 | `order_no` | 수주번호 | 빈칸 가능 |
-| `order_doc_no` | 수주서류 | 예: #26024… |
+| `order_doc_no` | 수주서류 | 번호만 저장 (예: `#26024 파일이름.p…` → 26024) |
+| `order_date` | 수주일 | 샘플에서 확인 (2026-10-18 추가) |
 | `business_type_raw` | 사업구분 | 원문 (예: 상하수도(지자체)) |
 | `industry` | — | 7개 분야 중 하나로 변환한 값 |
 | `customer` | 판매처 | |
@@ -178,3 +179,4 @@
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
 - 2026-10-18: Phase 3 구현. `model_code`(뒤 2자리) → `model_name`(전체 모델명)으로 변경 — 화면 표시와 수주서 품명(예: NTI-03) 대조에 전체 이름이 필요해서. 샘플 엑셀에서 확인한 `customer_order_no` 추가. 공통 필드는 `common/models.py`의 TimeStampedModel로 구현
 - 2026-10-18: UploadBatch 구현. `uploaded_by`·`uploaded_at`은 공통 필드 `created_by`·`created_at`으로 대신함. 원본 파일은 보관하지 않기로 결정
+- 2026-10-18: SalesOrder·SalesOrderItem 구현. `order_date`(수주일) 추가. 제조내역과는 FK 없이 "수주서류 번호 = PO번호"로 조회 시 찾아 플랜지를 보완(임시)
