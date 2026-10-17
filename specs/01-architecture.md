@@ -49,7 +49,7 @@ PostgreSQL
 | 용도 | 결정 | 설치 버전 |
 |---|---|---|
 | 그래프 | Chart.js + vue-chartjs | chart.js 4.5.1, vue-chartjs 5.3.4 |
-| 한국 지도 | Leaflet + 시·도 경계 GeoJSON (배경 타일 없이) | leaflet 1.9.4 |
+| 한국 지도 | Leaflet + 시·도 경계 GeoJSON (배경 타일 없이) | leaflet 1.9.4. 경계 데이터: southkorea-maps의 `kostat/2013/json/skorea_provinces_geo_simple.json` (통계청 2013, "자유롭게 공유·변형 가능"). 옛 이름 강원도·전라북도는 화면에서 지금 이름으로 바꿔 씀 |
 | 엑셀 읽기 | openpyxl | 3.1.5 |
 | PDF 읽기 | pdfplumber | 0.11.10 |
 | 로그인 방식 | Django 세션 인증 (Vite 프록시로 같은 주소 사용 → CORS 설정 불필요) | — |

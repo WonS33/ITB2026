@@ -5,6 +5,7 @@ import PeriodSelector from '@/components/PeriodSelector.vue'
 import RankingBar from '@/components/RankingBar.vue'
 import ShareDoughnut from '@/components/ShareDoughnut.vue'
 import StatCard from '@/components/StatCard.vue'
+import KoreaMap from '@/components/service/KoreaMap.vue'
 import MonthlyTrend from '@/components/service/MonthlyTrend.vue'
 import TripReportList from '@/components/service/TripReportList.vue'
 import { canEdit } from '@/auth'
@@ -69,13 +70,17 @@ watch(period, load, { deep: true, immediate: true })
       <div class="row g-3 mb-4">
         <div class="col-lg-6">
           <div class="card h-100"><div class="card-body">
-            <h3 class="h6">유상·무상 비율</h3>
-            <ShareDoughnut :items="s.paid" :total="s.trip_count" :color-of="paidColor" name-header="구분" unit="회" />
+            <h3 class="h6">출장지 지도 <span class="text-muted fw-normal small">· 점이 클수록 출장이 많음 (점에 마우스를 올리면 횟수)</span></h3>
+            <KoreaMap :items="s.by_region" />
           </div></div>
         </div>
         <div class="col-lg-6">
-          <div class="card h-100"><div class="card-body">
-            <h3 class="h6">지역별 출장 <span class="text-muted fw-normal small">(지도는 다음 단계에서 추가)</span></h3>
+          <div class="card mb-3"><div class="card-body">
+            <h3 class="h6">유상·무상 비율</h3>
+            <ShareDoughnut :items="s.paid" :total="s.trip_count" :color-of="paidColor" name-header="구분" unit="회" />
+          </div></div>
+          <div class="card"><div class="card-body">
+            <h3 class="h6">지역별 출장 순위</h3>
             <RankingBar :items="s.by_region" :total="s.trip_count" unit="회" />
           </div></div>
         </div>
