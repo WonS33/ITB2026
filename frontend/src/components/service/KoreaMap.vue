@@ -1,15 +1,17 @@
 <script setup>
 // 한국 지도(제주 포함): 시·도 경계 위에 출장지를 점으로 표시. 점 크기 = 출장 횟수
+// 점 단위는 시·도별 또는 시·군별 (items에 region·district가 들어 있음)
 // Leaflet + 시·도 경계 GeoJSON(통계청 2013, 간소화). 배경 지도 타일 없이 경계선만 그려 외부 서버가 필요 없다.
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import provinces from '@/assets/geo/skorea_provinces.json'
 import { SERIES_COLORS } from '@/charts'
-import { REGION_ALIASES, REGION_POINTS } from '@/regions'
+import { pointOf, REGION_ALIASES } from '@/regions'
 
 const props = defineProps({
-  items: { type: Array, required: true }, // [{ name: 시·도, quantity: 출장 횟수 }]
+  items: { type: Array, required: true }, // [{ name: 표시 이름, quantity: 출장 횟수, region, district }]
+  small: { type: Boolean, default: false }, // 시·군별처럼 점이 많을 때 점을 작게
 })
 
 const el = ref(null)
@@ -23,10 +25,10 @@ function drawMarkers() {
   markers.clearLayers()
   const max = Math.max(1, ...props.items.map((i) => i.quantity))
   for (const item of props.items) {
-    const point = REGION_POINTS[item.name]
+    const point = pointOf(item)
     if (!point || !item.quantity) continue
     // 원의 넓이가 횟수에 비례하도록 반지름은 제곱근으로 (최소 6px)
-    const radius = 6 + 18 * Math.sqrt(item.quantity / max)
+    const radius = props.small ? 4 + 12 * Math.sqrt(item.quantity / max) : 6 + 18 * Math.sqrt(item.quantity / max)
     L.circleMarker(point, {
       radius,
       color: '#ffffff', // 점이 겹칠 때 구분되도록 흰 테두리
@@ -57,11 +59,11 @@ onMounted(() => {
 })
 
 onBeforeUnmount(() => map?.remove())
-watch(() => props.items, drawMarkers, { deep: true })
+watch(() => [props.items, props.small], drawMarkers, { deep: true })
 </script>
 
 <template>
-  <div ref="el" class="korea-map" role="img" aria-label="시·도별 출장 횟수 지도"></div>
+  <div ref="el" class="korea-map" role="img" aria-label="지역별 출장 횟수 지도"></div>
 </template>
 
 <style scoped>

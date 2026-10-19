@@ -16,6 +16,9 @@ import { getServiceDashboard } from '@/api/service'
 const data = ref(null)
 const error = ref('')
 const list = ref(null)
+// 지역 단위: 시·도별 / 시·군별 (지도와 지역 순위 막대가 함께 바뀜)
+const LEVELS = [{ key: 'region', label: '시·도별' }, { key: 'district', label: '시·군별' }]
+const level = ref('region')
 
 async function load() {
   error.value = ''
@@ -32,6 +35,8 @@ function onSaved() {
 }
 
 const s = computed(() => data.value?.service)
+const regionItems = computed(() => (level.value === 'region' ? s.value.by_region : s.value.by_district))
+
 const paidRate = computed(() => {
   const paid = s.value?.paid.find((p) => p.name === '유상')?.quantity ?? 0
   return s.value?.trip_count ? percent(paid, s.value.trip_count) : null
@@ -70,8 +75,22 @@ watch(period, load, { deep: true, immediate: true })
       <div class="row g-3 mb-4">
         <div class="col-lg-6">
           <div class="card h-100"><div class="card-body">
-            <h3 class="h6">출장지 지도 <span class="text-muted fw-normal small">· 점이 클수록 출장이 많음 (점에 마우스를 올리면 횟수)</span></h3>
-            <KoreaMap :items="s.by_region" />
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+              <h3 class="h6 mb-0">출장지 지도 <span class="text-muted fw-normal small">· 점이 클수록 출장이 많음 (점에 마우스를 올리면 횟수)</span></h3>
+              <div class="btn-group btn-group-sm" role="group" aria-label="지역 단위">
+                <button
+                  v-for="l in LEVELS"
+                  :key="l.key"
+                  type="button"
+                  class="btn"
+                  :class="level === l.key ? 'btn-primary' : 'btn-outline-primary'"
+                  :aria-pressed="level === l.key"
+                  @click="level = l.key"
+                >{{ l.label }}</button>
+              </div>
+            </div>
+            <KoreaMap :items="regionItems" :small="level === 'district'" />
+            <p v-if="level === 'district'" class="text-muted small mt-2 mb-0">특별·광역시·세종시는 시 전체를 점 하나로 표시합니다.</p>
           </div></div>
         </div>
         <div class="col-lg-6">
@@ -80,8 +99,8 @@ watch(period, load, { deep: true, immediate: true })
             <ShareDoughnut :items="s.paid" :total="s.trip_count" :color-of="paidColor" name-header="구분" unit="회" />
           </div></div>
           <div class="card"><div class="card-body">
-            <h3 class="h6">지역별 출장 순위</h3>
-            <RankingBar :items="s.by_region" :total="s.trip_count" unit="회" />
+            <h3 class="h6">지역별 출장 순위 <span class="text-muted fw-normal small">· {{ level === 'region' ? '시·도별' : '시·군별' }}</span></h3>
+            <RankingBar :items="regionItems" :total="s.trip_count" unit="회" />
           </div></div>
         </div>
         <div class="col-lg-4">

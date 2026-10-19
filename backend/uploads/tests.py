@@ -305,7 +305,7 @@ TRIP_SAMPLE_PDF = os.path.join(settings.BASE_DIR.parent, "samples", "서비스�
 
 def trip_rows(**overrides):
     values = {"start_date": "2026-09-29", "end_date": "2026-09-30", "requester": "가람산업단지", "region": "충청북도",
-              "paid_type": "유상", "author": "김가상 대리", "companions": "김가상 대리\n이가상 사원",
+              "district": "청주시", "paid_type": "유상", "author": "김가상 대리", "companions": "김가상 대리\n이가상 사원",
               "products": "AVA03 | 380V/3Ph/60Hz, 29rpm | A80018377702 | 1", "parts": "Main Board\nPower Board",
               "work_type": "수리", "requester_type": "검색 불가", "extra_trip": "없음", "purpose": "가상 A/S",
               "fault_description": "1. 메인보드 고장", "work_description": "1. 메인보드 교체", "work_result": "정상작동"}
@@ -329,16 +329,21 @@ class TripReportUploadTests(APITestCase):
         self.assertEqual(res.data["summary"]["to_save"], 1)
         region_col = next(c for c in res.data["columns"] if c["key"] == "region")
         self.assertIn("제주특별자치도", region_col["choices"])  # 선택 목록으로 보여줌
+        district_col = next(c for c in res.data["columns"] if c["key"] == "district")
+        self.assertEqual(district_col["choices_by"], "region")  # 시·도에 따라 시·군 목록이 바뀜
+        self.assertIn("강릉시", district_col["choices_map"]["강원특별자치도"])
         self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
 
         report = TripReport.objects.get()
-        self.assertEqual((report.region, report.paid_type, report.author), ("충청북도", "유상", "김가상 대리"))
+        self.assertEqual((report.region, report.district, report.paid_type, report.author),
+                         ("충청북도", "청주시", "유상", "김가상 대리"))
         self.assertEqual(sorted(c.name for c in report.companions.all()), ["김가상 대리", "이가상 사원"])
         product = report.products.get()
         self.assertEqual((product.model_name, product.spec, product.serial_no_raw, product.quantity),
                          ("AVA03", "380V/3Ph/60Hz, 29rpm", "A80018377702", 1))
         self.assertEqual(sorted(p.part_name for p in report.parts.all()), ["Main Board", "Power Board"])
-        self.assertEqual(RequesterRegion.objects.get(requester="가람산업단지").region, "충청북도")
+        remembered = RequesterRegion.objects.get(requester="가람산업단지")
+        self.assertEqual((remembered.region, remembered.district), ("충청북도", "청주시"))
 
     def test_duplicate_by_start_date_and_requester(self):
         """기준: 출장 시작일 + 요청처 — 작성자·동행자가 달라도 같은 출장으로 본다"""
@@ -378,6 +383,13 @@ class TripReportUploadTests(APITestCase):
         errors = errors.data["rows"][0]["errors"]
         self.assertEqual(set(errors), {"region", "paid_type", "end_date", "parts", "products"})
 
+    def test_district_must_match_region(self):
+        errors = lambda **kw: self.upload(trip_rows(**kw)).data["rows"][0]["errors"]
+        self.assertEqual(errors(district="")["district"], "시·군을 골라 주세요.")  # 도는 시·군 필수
+        self.assertIn("district", errors(district="강릉시"))  # 충청북도에 없는 시·군
+        self.assertEqual(errors(region="서울특별시", district=""), {})  # 특별·광역시는 시·군 없음
+        self.assertIn("district", errors(region="서울특별시", district="청주시"))
+
     def test_production_leader_cannot_upload_trip_report(self):
         self.client.force_authenticate(User.objects.create_user(
             "prod", password="x", role=User.Role.LEADER, view_teams=[P], edit_teams=[P]))
@@ -404,10 +416,11 @@ class RealSampleTripReportTests(APITestCase):
         self.assertTrue(any(line.endswith("…") for line in v["parts"].split("\n")))  # 잘린 부품명이 잡힘
         self.assertGreater(v["fault_description"].count("\n"), 1)  # 여러 줄 값
 
-        # 대응표에 요청처가 있으면 시·도를 자동으로 채운다
-        RequesterRegion.objects.create(requester=v["requester"], region="충청북도")
+        # 대응표에 요청처가 있으면 시·도·시·군을 자동으로 채운다
+        RequesterRegion.objects.create(requester=v["requester"], region="충청북도", district="청주시")
         with open(TRIP_SAMPLE_PDF, "rb") as f:
-            self.assertEqual(handler.parse(f)[0][0]["values"]["region"], "충청북도")
+            filled = handler.parse(f)[0][0]["values"]
+        self.assertEqual((filled["region"], filled["district"]), ("충청북도", "청주시"))
 
 class OverrideNotAllowedForUniqueNumbersTests(APITestCase):
     """일련번호처럼 고유 번호가 기준인 종류는 '중복 아님'을 보내도 무시하고 건너뛴다"""

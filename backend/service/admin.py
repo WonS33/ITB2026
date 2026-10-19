@@ -20,12 +20,12 @@ class PartInline(admin.TabularInline):
 
 @admin.register(TripReport)
 class TripReportAdmin(admin.ModelAdmin):
-    list_display = ("start_date", "requester", "region", "paid_type", "author")
+    list_display = ("start_date", "requester", "region", "district", "paid_type", "author")
     list_filter = ("region", "paid_type")
     inlines = [CompanionInline, ProductInline, PartInline]
 
 
 @admin.register(RequesterRegion)
 class RequesterRegionAdmin(admin.ModelAdmin):
-    list_display = ("requester", "region")
+    list_display = ("requester", "region", "district")
     search_fields = ("requester",)

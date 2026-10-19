@@ -129,6 +129,7 @@
 | `requester_type` | 요청처 구분 |
 | `requester` | 요청처 |
 | `region` | 시·도 (대응표 또는 확인 화면에서 지정) |
+| `district` | 시·군 (도 지역만. 특별·광역시·세종시는 빈 값) |
 | `work_type` | 작업 구분 (예: 수리) |
 | `spec` | 사양 |
 | `serial_no_raw` | 일련번호 원문 (예: A80018377702) |
@@ -155,9 +156,9 @@
 - `part_name`, `unit_price`, `effective_date`
 - 단가 출처(견적서, 부품 단가표)가 확인된 뒤 만든다.
 
-### RequesterRegion — 요청처 → 시·도 대응표
+### RequesterRegion — 요청처 → 시·도·시·군 대응표
 
-- `requester` (unique), `region`
+- `requester` (unique), `region`, `district`
 
 ## 5. 업로드 공통
 
@@ -181,3 +182,4 @@
 - 2026-10-18: UploadBatch 구현. `uploaded_by`·`uploaded_at`은 공통 필드 `created_by`·`created_at`으로 대신함. 원본 파일은 보관하지 않기로 결정
 - 2026-10-18: SalesOrder·SalesOrderItem 구현. `order_date`(수주일) 추가. 제조내역과는 FK 없이 "수주서류 번호 = PO번호"로 조회 시 찾아 플랜지를 보완(임시)
 - 2026-10-18: 서비스팀 테이블 구현. `spec`·`serial_no_raw`는 보고서가 아니라 **제품(TripReportProduct)**에 둠 — 보고서 1건에 제품이 여러 개일 수 있고 제품마다 사양·일련번호가 다르기 때문. `purpose`(출장 목적) 추가. PartPrice는 단가 출처 확인 전이라 만들지 않음
+- 2026-10-19: TripReport·RequesterRegion에 `district`(시·군) 추가

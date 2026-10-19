@@ -2,7 +2,7 @@
 
 - 출장 횟수 = 출장 시작일이 기간에 속하는 보고서 수 (여러 날 출장도 1회)
 - 유상·무상 비율(%) = 비용청구 유무별 보고서 수 ÷ 전체 보고서 수 × 100
-- 지역별 출장 = 시·도별 보고서 수
+- 지역별 출장 = 시·도별 보고서 수, 시·군별 보고서 수 (특별·광역시는 시·도 하나로)
 - 교체 부품 순위 = 부품명별 사용 횟수 (보고서에 부품 수량이 없어 횟수로 센다)
 - A/S 제품 모델명 순위 = 모델명별 수량 합계
 - 출장 담당자 순위 = 작성자+동행자를 합쳐 보고서 1건당 1인 1회로 센 횟수
@@ -14,6 +14,7 @@ from django.db.models import Count, Sum
 from django.db.models.functions import ExtractMonth
 
 from .models import TripReport, TripReportPart, TripReportProduct
+from .regions import district_label
 
 
 def _ranking(counter):
@@ -30,6 +31,10 @@ def service_summary(period):
 
     paid = Counter(dict(reports.values_list("paid_type").annotate(n=Count("id"))))
     regions = Counter(dict(reports.values_list("region").annotate(n=Count("id"))))
+    districts = Counter(dict(
+        ((region, district), n)
+        for region, district, n in reports.values_list("region", "district").annotate(n=Count("id"))
+    ))
     parts = Counter(dict(
         TripReportPart.objects.filter(report__in=reports).values_list("part_name").annotate(n=Count("id"))
     ))
@@ -53,7 +58,12 @@ def service_summary(period):
         "trip_count": total,
         "monthly": [{"month": m, "count": by_month.get(m, 0)} for m in range(1, 13)],
         "paid": [{"name": name, "quantity": paid.get(name, 0)} for name in ("유상", "무상")],
-        "by_region": _ranking(regions),
+        # region·district: 화면에서 지도 점 위치를 찾는 데 쓴다
+        "by_region": [{**item, "region": item["name"], "district": ""} for item in _ranking(regions)],
+        "by_district": [
+            {"name": district_label(region, district), "quantity": n, "region": region, "district": district}
+            for (region, district), n in sorted(districts.items(), key=lambda x: (-x[1], district_label(*x[0])))
+        ],
         "by_part": _ranking(parts),
         "by_model": _ranking(models),
         "by_person": _ranking(people),

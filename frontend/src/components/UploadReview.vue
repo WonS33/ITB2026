@@ -21,6 +21,23 @@ function resetDrafts(batch) {
 }
 watch(() => props.batch, resetDrafts, { immediate: true })
 
+// 다른 칸 값에 따라 바뀌는 선택 목록 (예: 시·도 → 시·군). 목록이 없으면 빈 배열
+const dependentChoices = (col, row) => col.choices_map[drafts[row.id].values[col.choices_by]] || []
+
+// 시·도를 바꿔서 기존 시·군이 새 목록에 없으면 비운다
+watch(
+  drafts,
+  () => {
+    for (const col of props.batch.columns.filter((c) => c.choices_by)) {
+      for (const row of props.batch.rows) {
+        const values = drafts[row.id]?.values
+        if (values?.[col.key] && !dependentChoices(col, row).includes(values[col.key])) values[col.key] = ''
+      }
+    }
+  },
+  { deep: true },
+)
+
 function changedRows() {
   return props.batch.rows
     .filter((row) => {
@@ -118,10 +135,21 @@ function rowClass(row) {
                   중복 아님 — 저장
                 </label>
               </td>
-              <td v-for="col in batch.columns" :key="col.key" :style="{ minWidth: col.multiline ? '16rem' : col.choices ? '10rem' : '7rem' }">
-                <!-- 열 종류: 선택 목록(choices) / 여러 줄(multiline) / 한 줄 입력 -->
+              <td v-for="col in batch.columns" :key="col.key" :style="{ minWidth: col.multiline ? '16rem' : col.choices || col.choices_by ? '10rem' : '7rem' }">
+                <!-- 열 종류: 선택 목록(choices) / 다른 칸에 따라 바뀌는 선택 목록(choices_by) / 여러 줄(multiline) / 한 줄 입력 -->
                 <select
-                  v-if="col.choices"
+                  v-if="col.choices_by"
+                  v-model="drafts[row.id].values[col.key]"
+                  class="form-select form-select-sm"
+                  :class="{ 'is-invalid': row.errors[col.key] }"
+                  :disabled="drafts[row.id].excluded || !dependentChoices(col, row).length"
+                  :aria-label="col.label"
+                >
+                  <option value="">{{ dependentChoices(col, row).length ? '선택' : '없음' }}</option>
+                  <option v-for="c in dependentChoices(col, row)" :key="c" :value="c">{{ c }}</option>
+                </select>
+                <select
+                  v-else-if="col.choices"
                   v-model="drafts[row.id].values[col.key]"
                   class="form-select form-select-sm"
                   :class="{ 'is-invalid': row.errors[col.key] }"

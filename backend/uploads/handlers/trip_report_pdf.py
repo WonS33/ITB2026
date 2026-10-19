@@ -2,8 +2,8 @@
 
 - PDF 1페이지 = 보고서 1건 = 확인 표 1행
 - 여러 개인 값은 한 칸에 줄바꿈으로 나눠 넣는다: 동행자, 교체 부품, 제품 목록("모델명 | 사양 | 일련번호 | 수량")
-- 요청처 → 시·도: 대응표(RequesterRegion)에 있으면 자동으로 채우고, 없으면 확인 화면에서 고른다.
-  저장할 때 고른 시·도를 대응표에 기억한다.
+- 요청처 → 시·도·시·군: 대응표(RequesterRegion)에 있으면 자동으로 채우고, 없으면 확인 화면에서 고른다.
+  시·군 목록은 고른 시·도에 따라 바뀐다 (특별·광역시·세종시는 시·군 없음). 저장할 때 고른 값을 대응표에 기억한다.
 - 잘린 값(…)은 오류로 표시해 사람이 고치게 한다 (부품명·요청처 등)
 - 중복 확인 기준: 출장 시작일 + 요청처 (보고서 고유 번호가 없어서 — 기업 확인 필요)
   같은 날 같은 곳에 실제로 두 번 간 경우, 확인 화면에서 "중복 아님"을 체크하면 저장할 수 있다
@@ -12,7 +12,7 @@
 import re
 
 from service.models import RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
-from service.regions import REGIONS
+from service.regions import DISTRICTS, REGIONS
 
 from .base import UploadHandler, parse_iso_date
 from .pdf_form import TRUNCATED, read_pages
@@ -38,7 +38,7 @@ TEXT_FIELDS = {
     "paid_type": "비용청구 유무",
 }
 LONG_FIELDS = {"fault_description": "고장 내용", "work_description": "작업 내용", "work_result": "작업 결과"}
-REPORT_KEYS = list(TEXT_FIELDS) + list(LONG_FIELDS) + ["requester", "region"]
+REPORT_KEYS = list(TEXT_FIELDS) + list(LONG_FIELDS) + ["requester", "region", "district"]
 DATE_FIELDS = ("start_date", "end_date")
 
 
@@ -64,6 +64,8 @@ class TripReportPdfHandler(UploadHandler):
         ("end_date", "출장 종료일"),
         ("requester", "요청처"),
         ("region", "시·도", {"choices": REGIONS}),
+        # 시·군 목록은 같은 행의 시·도에 따라 바뀐다 (목록이 없는 시·도는 빈 값)
+        ("district", "시·군", {"choices_by": "region", "choices_map": DISTRICTS}),
         ("paid_type", "비용청구", {"choices": PAID_TYPES}),
         ("author", "작성자"),
         ("companions", "동행자(줄마다 1명)", {"multiline": True}),
@@ -80,7 +82,8 @@ class TripReportPdfHandler(UploadHandler):
 
     def parse(self, file):
         rows = []
-        known = dict(RequesterRegion.objects.values_list("requester", "region"))
+        known = {r: (region, district) for r, region, district
+                 in RequesterRegion.objects.values_list("requester", "region", "district")}
         for page_no, page in enumerate(read_pages(file), start=1):
             if page.find("출장 시작일") is None:
                 continue
@@ -89,7 +92,7 @@ class TripReportPdfHandler(UploadHandler):
             values.update({key: value(label).strip() for key, label in LONG_FIELDS.items()})
             # 요청처: "검색 불가"이면 직접 적은 칸, 아니면 요청처 칸
             values["requester"] = (value("요청처(검색불가시)") or value("요청처")).replace("\n", " ").strip()
-            values["region"] = known.get(values["requester"], "")
+            values["region"], values["district"] = known.get(values["requester"], ("", ""))
             values["companions"] = "\n".join(split_lines(value("동행자")))
             values["parts"] = "\n".join(line.strip() for line in value("부품 사용 내역").split("\n") if line.strip())
             products = page.table(PRODUCT_HEADERS, ["수리 내역"])
@@ -137,6 +140,12 @@ class TripReportPdfHandler(UploadHandler):
                 errors[key] = message
         if values.get("region") not in REGIONS:
             errors["region"] = "시·도를 골라 주세요."
+        else:
+            districts = DISTRICTS.get(values["region"], [])
+            if districts and values.get("district") not in districts:
+                errors["district"] = "시·군을 골라 주세요."
+            elif not districts and values.get("district"):
+                errors["district"] = "특별·광역시는 시·군을 비워 주세요."
         if values.get("paid_type") not in PAID_TYPES:
             errors["paid_type"] = "유상 또는 무상을 골라 주세요."
 
@@ -159,7 +168,7 @@ class TripReportPdfHandler(UploadHandler):
         for row in rows:
             v = {k: (val or "").strip() for k, val in row["values"].items()}
             report = TripReport.objects.create(
-                **{k: v[k] for k in REPORT_KEYS if k not in DATE_FIELDS},
+                **{k: v.get(k, "") for k in REPORT_KEYS if k not in DATE_FIELDS},
                 start_date=parse_iso_date(v["start_date"]),
                 end_date=parse_iso_date(v["end_date"]),
                 created_by=user,
@@ -172,8 +181,10 @@ class TripReportPdfHandler(UploadHandler):
                                                  serial_no_raw=p["serial_no_raw"], quantity=int(p["quantity"]))
             for name in split_lines_keep(v["parts"]):
                 TripReportPart.objects.create(report=report, part_name=name)
-            # 확인 화면에서 고른 시·도를 대응표에 기억 → 다음 업로드부터 자동으로 채움
-            RequesterRegion.objects.update_or_create(requester=v["requester"], defaults={"region": v["region"]})
+            # 확인 화면에서 고른 시·도·시·군을 대응표에 기억 → 다음 업로드부터 자동으로 채움
+            RequesterRegion.objects.update_or_create(
+                requester=v["requester"], defaults={"region": v["region"], "district": v.get("district", "")}
+            )
         return len(rows)
 
 

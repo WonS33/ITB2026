@@ -74,7 +74,8 @@ def check_rows(handler, rows):
 
 
 def column_specs(handler):
-    """확인 화면에 보낼 열 정보. choices가 있으면 선택 목록, multiline이면 여러 줄 입력으로 보여준다."""
+    """확인 화면에 보낼 열 정보. choices가 있으면 선택 목록, multiline이면 여러 줄 입력으로 보여준다.
+    choices_by가 있으면 같은 행의 다른 칸 값에 따라 choices_map[그 값] 목록을 보여준다 (예: 시·도 → 시·군)."""
     specs = []
     for key, label, *options in handler.columns:
         specs.append({"key": key, "label": label, **(options[0] if options else {})})

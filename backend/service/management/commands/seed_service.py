@@ -7,12 +7,13 @@ from service.models import RequesterRegion, TripReport, TripReportCompanion, Tri
 
 VIRTUAL_PURPOSE = "가상 출장"  # 가상 데이터 표시 (실제 업로드 데이터와 구분)
 
-# 개발·시연용 가상 요청처 → 시·도 (실제 기업 아님)
+# 개발·시연용 가상 요청처 → 시·도, 시·군 (실제 기업 아님. 특별·광역시는 시·군 없음)
 REQUESTERS = [
-    ("가람정수장", "서울특별시"), ("나래하수처리장", "경기도"), ("다온산업단지", "충청북도"), ("라온발전소", "충청남도"),
-    ("마루정수센터", "부산광역시"), ("바다가스기지", "울산광역시"), ("사랑하수처리장", "전라남도"),
-    ("아름정수장", "경상북도"), ("자람배수지", "강원특별자치도"), ("하늘정수장", "제주특별자치도"),
-    ("푸른처리장", "대전광역시"), ("새솔정수센터", "경상남도"),
+    ("가람정수장", "서울특별시", ""), ("나래하수처리장", "경기도", "화성시"), ("누리배수지", "경기도", "용인시"),
+    ("다온산업단지", "충청북도", "청주시"), ("라온발전소", "충청남도", "당진시"), ("마루정수센터", "부산광역시", ""),
+    ("바다가스기지", "울산광역시", ""), ("사랑하수처리장", "전라남도", "여수시"), ("아름정수장", "경상북도", "포항시"),
+    ("보람정수장", "경상북도", "구미시"), ("자람배수지", "강원특별자치도", "강릉시"), ("솔빛정수장", "강원특별자치도", "원주시"),
+    ("하늘정수장", "제주특별자치도", "제주시"), ("푸른처리장", "대전광역시", ""), ("새솔정수센터", "경상남도", "창원시"),
 ]
 PEOPLE = ["김가상 대리", "이가상 과장", "박가상 사원", "최가상 대리"]
 MODELS = ["AVA01", "AVA03", "AVA05", "AVB02", "NTI-03"]
@@ -30,9 +31,9 @@ class Command(BaseCommand):
         old = TripReport.objects.filter(purpose=VIRTUAL_PURPOSE, start_date__year=year)
         deleted = old.count()  # delete()의 숫자는 함께 지워지는 동행자·제품·부품까지 세므로 보고서 수를 따로 센다
         old.delete()
-        for requester, region in REQUESTERS:
-            RequesterRegion.objects.get_or_create(requester=requester, defaults={"region": region})
-        region_of = dict(REQUESTERS)
+        for requester, region, district in REQUESTERS:
+            RequesterRegion.objects.update_or_create(requester=requester, defaults={"region": region, "district": district})
+        region_of = {requester: (region, district) for requester, region, district in REQUESTERS}
 
         last_month = date.today().month if year == date.today().year else 12
         count = 0
@@ -51,7 +52,8 @@ class Command(BaseCommand):
                     paid_type=rng.choices(["유상", "무상"], weights=[6, 4])[0],
                     requester_type="검색 불가",
                     requester=requester,
-                    region=region_of[requester],
+                    region=region_of[requester][0],
+                    district=region_of[requester][1],
                     work_type=rng.choice(["수리", "점검", "설치"]),
                     purpose=VIRTUAL_PURPOSE,
                     fault_description="1. 가상 고장 내용",
