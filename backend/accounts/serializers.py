@@ -1,3 +1,5 @@
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 
 from .models import User
@@ -6,6 +8,28 @@ from .models import User
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField()
     password = serializers.CharField(trim_whitespace=False)
+
+
+class PasswordChangeSerializer(serializers.Serializer):
+    """본인 비밀번호 변경. 새 비밀번호는 Django 기본 규칙(settings.AUTH_PASSWORD_VALIDATORS)으로 검사한다."""
+
+    current_password = serializers.CharField(trim_whitespace=False)
+    new_password = serializers.CharField(trim_whitespace=False)
+
+    def validate_current_password(self, value):
+        if not self.context["user"].check_password(value):
+            raise serializers.ValidationError("현재 비밀번호가 올바르지 않습니다.")
+        return value
+
+    def validate(self, data):
+        if data["current_password"] == data["new_password"]:
+            raise serializers.ValidationError({"new_password": "현재 비밀번호와 다른 비밀번호를 입력해 주세요."})
+        try:
+            # 8자 이상, 흔한 비밀번호·숫자만·아이디와 비슷한 비밀번호 금지
+            validate_password(data["new_password"], user=self.context["user"])
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({"new_password": list(e.messages)})
+        return data
 
 
 class MeSerializer(serializers.ModelSerializer):

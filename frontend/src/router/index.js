@@ -9,6 +9,7 @@ const router = createRouter({
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
     { path: '/production', component: () => import('@/views/ProductionView.vue'), meta: { team: 'production' } },
     { path: '/service', component: () => import('@/views/ServiceView.vue'), meta: { team: 'service' } },
+    { path: '/password', component: () => import('@/views/PasswordView.vue') },
     { path: '/forbidden', component: () => import('@/views/ForbiddenView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

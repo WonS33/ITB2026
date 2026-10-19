@@ -1,7 +1,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { homePath, login } from '@/auth'
+import { auth, homePath, login } from '@/auth'
 
 const router = useRouter()
 const route = useRoute()
@@ -16,7 +16,10 @@ async function submit() {
   submitting.value = true
   try {
     await login(username.value, password.value)
-    router.replace(route.query.next || homePath())
+    const next = route.query.next || homePath()
+    // 첫 로그인(또는 관리자가 비밀번호를 초기화한 뒤)에는 비밀번호 변경을 안내한다
+    if (auth.user.must_change_password) router.replace({ path: '/password', query: { next } })
+    else router.replace(next)
   } catch (e) {
     error.value = e.message
   } finally {

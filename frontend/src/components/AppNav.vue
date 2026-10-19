@@ -23,6 +23,7 @@ async function onLogout() {
         </li>
       </ul>
       <span class="navbar-text me-3">{{ auth.user.name }} ({{ auth.user.role_display }})</span>
+      <RouterLink class="btn btn-outline-light btn-sm me-2" to="/password">비밀번호 변경</RouterLink>
       <button class="btn btn-outline-light btn-sm" @click="onLogout">로그아웃</button>
     </div>
   </nav>

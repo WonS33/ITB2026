@@ -1,4 +1,4 @@
-from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
@@ -6,7 +6,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import LoginSerializer, MeSerializer
+from .serializers import LoginSerializer, MeSerializer, PasswordChangeSerializer
 
 
 class LoginView(APIView):
@@ -45,3 +45,20 @@ class MeView(APIView):
 
     def get(self, request):
         return Response(MeSerializer(request.user).data)
+
+
+class PasswordChangeView(APIView):
+    """POST /api/auth/password/ — 본인 비밀번호 변경 (specs/02-users-permissions.md 5절)
+
+    현재 비밀번호를 확인한 뒤 새 비밀번호를 해시로 저장하고(set_password), 첫 로그인 안내를 끈다.
+    """
+
+    def post(self, request):
+        user = request.user
+        serializer = PasswordChangeSerializer(data=request.data, context={"user": user})
+        serializer.is_valid(raise_exception=True)
+        user.set_password(serializer.validated_data["new_password"])
+        user.must_change_password = False
+        user.save(update_fields=["password", "must_change_password"])
+        update_session_auth_hash(request, user)  # 비밀번호를 바꿔도 지금 로그인은 유지
+        return Response(MeSerializer(user).data)

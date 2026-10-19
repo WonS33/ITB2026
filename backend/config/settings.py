@@ -116,6 +116,10 @@ AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
+    # 영문·숫자·특수기호 조합 (최소 길이 8자는 위 MinimumLengthValidator 기본값)
+    {
+        'NAME': 'accounts.validators.CharacterMixValidator',
+    },
 ]
 
 

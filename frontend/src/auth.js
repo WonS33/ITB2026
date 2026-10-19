@@ -29,6 +29,11 @@ export async function logout() {
   auth.user = null
 }
 
+// 본인 비밀번호 변경 → 첫 로그인 안내(must_change_password)가 꺼진 최신 정보로 바꾼다
+export async function changePassword(currentPassword, newPassword) {
+  auth.user = await authApi.changePassword(currentPassword, newPassword)
+}
+
 export const canView = (team) => !!auth.user && auth.user.view_teams.includes(team)
 export const canEdit = (team) => !!auth.user && auth.user.edit_teams.includes(team)
 

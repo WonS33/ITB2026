@@ -98,3 +98,57 @@ class TeamPermissionTests(APITestCase):
     def test_anonymous_is_rejected(self):
         request = self.factory.get("/dummy/")
         self.assertEqual(ProductionDummyView.as_view()(request).status_code, 401)
+
+
+class PasswordChangeTests(APITestCase):
+    """specs/02-users-permissions.md 5절: 본인 비밀번호 변경, 첫 로그인 안내"""
+
+    def setUp(self):
+        self.user = make_user("prod_leader", User.Role.LEADER, [P], [P])  # 새 계정은 must_change_password=True
+        self.client.post("/api/auth/login/", {"username": "prod_leader", "password": "test-pass-1234"})
+
+    def change(self, current, new):
+        return self.client.post("/api/auth/password/", {"current_password": current, "new_password": new})
+
+    def test_new_account_needs_password_change(self):
+        self.assertTrue(self.client.get("/api/auth/me/").data["must_change_password"])
+
+    def test_change_password_keeps_session_and_clears_notice(self):
+        res = self.change("test-pass-1234", "Blue-Valve-2026!")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data["must_change_password"])
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, 200)  # 로그인 유지
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("Blue-Valve-2026!"))
+        self.assertNotIn("Blue-Valve-2026!", self.user.password)  # 해시로 저장
+
+        self.client.post("/api/auth/logout/")
+        old = self.client.post("/api/auth/login/", {"username": "prod_leader", "password": "test-pass-1234"})
+        self.assertEqual(old.status_code, 400)  # 옛 비밀번호로는 로그인 안 됨
+
+    def test_wrong_current_password(self):
+        res = self.change("wrong", "Blue-Valve-2026!")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("current_password", res.data)
+
+    def test_weak_or_same_new_password(self):
+        weak_passwords = (
+            "1234", "12345678", "password", "prod_leader1", "test-pass-1234",
+            "Valve2026",  # 특수기호 없음
+            "Valve-Blue!",  # 숫자 없음
+            "2026-10-19!",  # 영문 없음
+            "Va1!",  # 8자 미만
+            "Blue Valve 2026!",  # 공백
+            "밸브Valve2026!",  # 한글
+        )
+        for weak in weak_passwords:
+            with self.subTest(weak=weak):
+                res = self.change("test-pass-1234", weak)
+                self.assertEqual(res.status_code, 400)
+                self.assertIn("new_password", res.data)
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.must_change_password)  # 실패하면 안내도 그대로
+
+    def test_anonymous_401(self):
+        self.client.post("/api/auth/logout/")
+        self.assertEqual(self.change("a", "b").status_code, 401)
