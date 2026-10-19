@@ -10,6 +10,8 @@ const router = createRouter({
     { path: '/production', component: () => import('@/views/ProductionView.vue'), meta: { team: 'production' } },
     { path: '/service', component: () => import('@/views/ServiceView.vue'), meta: { team: 'service' } },
     { path: '/password', component: () => import('@/views/PasswordView.vue') },
+    // meta.fullAccess: 대표·경영지원팀·관리자만
+    { path: '/admin', component: () => import('@/views/AdminView.vue'), meta: { fullAccess: true } },
     { path: '/forbidden', component: () => import('@/views/ForbiddenView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],
@@ -24,6 +26,7 @@ router.beforeEach(async (to) => {
   }
   if (!auth.user) return { path: '/login', query: { next: to.fullPath } }
   if (to.meta.team && !canView(to.meta.team)) return '/forbidden'
+  if (to.meta.fullAccess && !auth.user.has_full_access) return '/forbidden'
   return true
 })
 

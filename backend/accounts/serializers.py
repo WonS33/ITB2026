@@ -67,3 +67,10 @@ class MeSerializer(serializers.ModelSerializer):
 
     def get_edit_teams(self, user):
         return [team for team in User.Team.values if user.can_edit(team)]
+
+
+class AdminUserSerializer(MeSerializer):
+    """관리자 페이지 직원 목록 한 줄. 내 정보 항목에 마지막 로그인 시각을 더한다."""
+
+    class Meta(MeSerializer.Meta):
+        fields = MeSerializer.Meta.fields + ["last_login"]

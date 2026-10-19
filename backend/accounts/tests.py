@@ -1,3 +1,4 @@
+from django.contrib.auth.password_validation import validate_password
 from rest_framework.response import Response
 from rest_framework.test import APIRequestFactory, APITestCase, force_authenticate
 from rest_framework.views import APIView
@@ -152,3 +153,73 @@ class PasswordChangeTests(APITestCase):
     def test_anonymous_401(self):
         self.client.post("/api/auth/logout/")
         self.assertEqual(self.change("a", "b").status_code, 401)
+
+
+class AdminPasswordResetTests(APITestCase):
+    """specs/02-users-permissions.md 6절: 관리자 비밀번호 초기화 (서버가 임시 비밀번호 생성)"""
+
+    def setUp(self):
+        self.admin = make_user("admin", User.Role.ADMIN)
+        self.target = make_user("prod_member", User.Role.MEMBER, [P])
+        self.target.must_change_password = False
+        self.target.save()
+
+    def login(self, username):
+        self.client.post("/api/auth/login/", {"username": username, "password": "test-pass-1234"})
+
+    def reset(self, user):
+        return self.client.post(f"/api/admin/users/{user.pk}/reset-password/")
+
+    def test_only_full_access_roles(self):
+        make_user("prod_leader", User.Role.LEADER, [P], [P])
+        for username, list_code, reset_code in (("prod_leader", 403, 403), ("prod_member", 403, 403)):
+            with self.subTest(username=username):
+                self.login(username)
+                self.assertEqual(self.client.get("/api/admin/users/").status_code, list_code)
+                self.assertEqual(self.reset(self.admin).status_code, reset_code)
+                self.client.post("/api/auth/logout/")
+        self.assertEqual(self.client.get("/api/admin/users/").status_code, 401)  # 로그인 안 함
+        for role in (User.Role.CEO, User.Role.MANAGEMENT):
+            with self.subTest(role=role):
+                make_user(role, role)
+                self.login(role)
+                self.assertEqual(self.client.get("/api/admin/users/").status_code, 200)
+                self.client.post("/api/auth/logout/")
+
+    def test_list(self):
+        self.login("admin")
+        res = self.client.get("/api/admin/users/")
+        self.assertEqual([u["username"] for u in res.data], ["admin", "prod_member"])
+        self.assertNotIn("password", res.data[0])
+
+    def test_reset_creates_valid_temporary_password(self):
+        self.login("admin")
+        res = self.reset(self.target)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res["Cache-Control"], "no-store")
+        temp = res.data["temporary_password"]
+        validate_password(temp, user=self.target)  # 새 비밀번호 규칙 통과
+
+        self.target.refresh_from_db()
+        self.assertTrue(self.target.check_password(temp))
+        self.assertNotIn(temp, self.target.password)  # 해시로 저장
+        self.assertTrue(self.target.must_change_password)  # 다음 로그인 때 변경 안내
+        self.assertNotEqual(self.reset(self.target).data["temporary_password"], temp)  # 매번 다름
+
+    def test_reset_logs_out_target_and_old_password_fails(self):
+        target_client = self.client_class()
+        target_client.post("/api/auth/login/", {"username": "prod_member", "password": "test-pass-1234"})
+        self.login("admin")
+        temp = self.reset(self.target).data["temporary_password"]
+
+        self.assertEqual(target_client.get("/api/auth/me/").status_code, 401)  # 기존 세션 끊김
+        old = target_client.post("/api/auth/login/", {"username": "prod_member", "password": "test-pass-1234"})
+        self.assertEqual(old.status_code, 400)
+        new = target_client.post("/api/auth/login/", {"username": "prod_member", "password": temp})
+        self.assertEqual(new.status_code, 200)
+        self.assertTrue(new.data["must_change_password"])
+
+    def test_cannot_reset_self_or_unknown(self):
+        self.login("admin")
+        self.assertEqual(self.reset(self.admin).status_code, 400)
+        self.assertEqual(self.client.post("/api/admin/users/99999/reset-password/").status_code, 404)

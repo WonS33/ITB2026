@@ -73,3 +73,4 @@
 - 2026-10-18: 계정 API 구현. 로그인 실패는 400. `GET /api/auth/me/`가 CSRF 쿠키도 내려준다. 미로그인 401은 `accounts.authentication.SessionAuthentication401`로 처리
 - 2026-10-18: 업로드 API 4개 구현 (현재 `kind=manufacturing_excel`만 지원, 나머지는 400). 오류 행이 있을 때 confirm은 400과 최신 검사 결과(`batch`)를 돌려준다
 - 2026-10-18: `POST /api/auth/password/` 구현 — 본문 `current_password`, `new_password`. 실패하면 400과 칸별 오류(한국어), 성공하면 내 정보(must_change_password=false)
+- 2026-10-19: `GET /api/admin/users/`, `POST /api/admin/users/{id}/reset-password/` 구현. 초기화 응답은 `{user, temporary_password}`(Cache-Control: no-store), 본인 초기화는 400. 권한 없으면 403, 미로그인 401

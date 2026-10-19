@@ -21,6 +21,9 @@ async function onLogout() {
             {{ TEAM_LABELS[team] }}
           </RouterLink>
         </li>
+        <li v-if="auth.user.has_full_access" class="nav-item">
+          <RouterLink class="nav-link" active-class="active" to="/admin">관리자 설정</RouterLink>
+        </li>
       </ul>
       <span class="navbar-text me-3">{{ auth.user.name }} ({{ auth.user.role_display }})</span>
       <RouterLink class="btn btn-outline-light btn-sm me-2" to="/password">비밀번호 변경</RouterLink>

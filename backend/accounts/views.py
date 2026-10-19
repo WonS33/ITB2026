@@ -1,4 +1,5 @@
 from django.contrib.auth import authenticate, login, logout, update_session_auth_hash
+from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import ensure_csrf_cookie
 from rest_framework import status
@@ -6,7 +7,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .serializers import LoginSerializer, MeSerializer, PasswordChangeSerializer
+from .models import User
+from .permissions import IsFullAccess
+from .serializers import AdminUserSerializer, LoginSerializer, MeSerializer, PasswordChangeSerializer
+from .validators import generate_temporary_password
 
 
 class LoginView(APIView):
@@ -62,3 +66,39 @@ class PasswordChangeView(APIView):
         user.save(update_fields=["password", "must_change_password"])
         update_session_auth_hash(request, user)  # 비밀번호를 바꿔도 지금 로그인은 유지
         return Response(MeSerializer(user).data)
+
+
+class AdminUserListView(APIView):
+    """GET /api/admin/users/ — 직원 목록 (specs/02-users-permissions.md 6절)"""
+
+    permission_classes = [IsFullAccess]
+
+    def get(self, request):
+        users = User.objects.order_by("username")
+        return Response(AdminUserSerializer(users, many=True).data)
+
+
+class AdminPasswordResetView(APIView):
+    """POST /api/admin/users/{id}/reset-password/ — 비밀번호 초기화
+
+    서버가 임시 비밀번호를 만들어 해시로 저장하고, 원문은 이 응답에서 한 번만 돌려준다(DB에는 원문이 남지 않음).
+    must_change_password=True로 바꿔 그 직원이 다음 로그인 때 비밀번호 변경 안내를 받게 한다.
+    비밀번호 해시가 바뀌므로 그 직원이 이미 로그인해 있던 세션은 자동으로 끊긴다.
+    """
+
+    permission_classes = [IsFullAccess]
+
+    def post(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        if user.pk == request.user.pk:
+            return Response(
+                {"detail": "본인 비밀번호는 [비밀번호 변경] 메뉴에서 바꿔 주세요."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        temporary_password = generate_temporary_password(user)
+        user.set_password(temporary_password)
+        user.must_change_password = True
+        user.save(update_fields=["password", "must_change_password"])
+        response = Response({"user": AdminUserSerializer(user).data, "temporary_password": temporary_password})
+        response["Cache-Control"] = "no-store"  # 임시 비밀번호가 브라우저 캐시에 남지 않게
+        return response
