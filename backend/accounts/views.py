@@ -9,7 +9,13 @@ from rest_framework.views import APIView
 
 from .models import User
 from .permissions import IsFullAccess
-from .serializers import AdminUserSerializer, LoginSerializer, MeSerializer, PasswordChangeSerializer
+from .serializers import (
+    AdminUserSerializer,
+    AdminUserUpdateSerializer,
+    LoginSerializer,
+    MeSerializer,
+    PasswordChangeSerializer,
+)
 from .validators import generate_temporary_password
 
 
@@ -76,6 +82,23 @@ class AdminUserListView(APIView):
     def get(self, request):
         users = User.objects.order_by("username")
         return Response(AdminUserSerializer(users, many=True).data)
+
+
+class AdminUserDetailView(APIView):
+    """PATCH /api/admin/users/{id}/ — 역할·열람 범위·수정 권한 변경
+
+    권한은 요청마다 DB에서 다시 읽으므로, 저장하는 즉시 그 직원의 API 권한에 반영된다.
+    (그 직원의 화면 메뉴는 새로고침하거나 다시 로그인하면 바뀐다)
+    """
+
+    permission_classes = [IsFullAccess]
+
+    def patch(self, request, pk):
+        user = get_object_or_404(User, pk=pk)
+        serializer = AdminUserUpdateSerializer(user, data=request.data, partial=True, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+        return Response(AdminUserSerializer(user).data)
 
 
 class AdminPasswordResetView(APIView):

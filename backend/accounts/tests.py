@@ -223,3 +223,66 @@ class AdminPasswordResetTests(APITestCase):
         self.login("admin")
         self.assertEqual(self.reset(self.admin).status_code, 400)
         self.assertEqual(self.client.post("/api/admin/users/99999/reset-password/").status_code, 404)
+
+
+class AdminUserUpdateTests(APITestCase):
+    """specs/02-users-permissions.md 6절: 관리자가 체크박스로 권한을 바꾸면 즉시 반영"""
+
+    def setUp(self):
+        self.admin = make_user("admin", User.Role.ADMIN)
+        self.target = make_user("svc_member", User.Role.MEMBER, [S])
+        self.client.post("/api/auth/login/", {"username": "admin", "password": "test-pass-1234"})
+
+    def patch(self, user, data):
+        return self.client.patch(f"/api/admin/users/{user.pk}/", data, format="json")
+
+    def test_change_teams_applies_immediately(self):
+        target_client = self.client_class()
+        target_client.post("/api/auth/login/", {"username": "svc_member", "password": "test-pass-1234"})
+        self.assertEqual(target_client.get("/api/production/dashboard/").status_code, 403)
+
+        res = self.patch(self.target, {"view_teams": [S, P, P]})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["view_teams"], [P, S])  # 중복 제거, 순서 정리
+
+        # 다시 로그인하지 않아도 바로 생산팀 조회 가능
+        self.assertEqual(target_client.get("/api/auth/me/").data["view_teams"], [P, S])
+        self.assertNotEqual(target_client.get("/api/production/dashboard/").status_code, 403)
+
+    def test_change_role(self):
+        res = self.patch(self.target, {"role": User.Role.LEADER, "edit_teams": [S]})
+        self.assertEqual(res.status_code, 200)
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.role, User.Role.LEADER)
+        self.assertEqual(self.target.edit_teams, [S])
+        self.assertEqual(self.target.view_teams, [S])  # 보내지 않은 항목은 그대로
+
+    def test_edit_requires_view(self):
+        res = self.patch(self.target, {"edit_teams": [P]})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("edit_teams", res.data)
+
+    def test_invalid_values(self):
+        self.assertEqual(self.patch(self.target, {"view_teams": ["sales"]}).status_code, 400)
+        self.assertEqual(self.patch(self.target, {"role": "king"}).status_code, 400)
+
+    def test_cannot_remove_own_full_access(self):
+        res = self.patch(self.admin, {"role": User.Role.MEMBER})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("role", res.data)
+        self.assertEqual(self.patch(self.admin, {"role": User.Role.MANAGEMENT}).status_code, 200)
+
+    def test_only_full_access_roles(self):
+        leader = make_user("svc_leader", User.Role.LEADER, [S], [S])
+        other = self.client_class()
+        other.post("/api/auth/login/", {"username": "svc_leader", "password": "test-pass-1234"})
+        res = other.patch(f"/api/admin/users/{leader.pk}/", {"role": User.Role.ADMIN}, format="json")
+        self.assertEqual(res.status_code, 403)
+        leader.refresh_from_db()
+        self.assertEqual(leader.role, User.Role.LEADER)  # 스스로 관리자가 될 수 없음
+
+    def test_other_fields_are_ignored(self):
+        self.patch(self.target, {"username": "hacked", "password": "x", "is_superuser": True})
+        self.target.refresh_from_db()
+        self.assertEqual(self.target.username, "svc_member")
+        self.assertFalse(self.target.is_superuser)

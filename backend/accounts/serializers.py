@@ -70,7 +70,44 @@ class MeSerializer(serializers.ModelSerializer):
 
 
 class AdminUserSerializer(MeSerializer):
-    """관리자 페이지 직원 목록 한 줄. 내 정보 항목에 마지막 로그인 시각을 더한다."""
+    """관리자 페이지 직원 목록 한 줄. 내 정보 항목에 마지막 로그인 시각을 더한다.
+
+    view_teams, edit_teams는 체크박스에 쓰도록 DB에 저장된 값을 그대로 돌려준다.
+    (대표·경영지원팀·관리자는 저장된 값과 관계없이 전체 권한 → 화면에 "전체"로 표시)
+    """
+
+    view_teams = serializers.ListField(read_only=True)
+    edit_teams = serializers.ListField(read_only=True)
 
     class Meta(MeSerializer.Meta):
         fields = MeSerializer.Meta.fields + ["last_login"]
+
+
+class AdminUserUpdateSerializer(serializers.ModelSerializer):
+    """관리자가 직원의 역할·열람 범위·수정 권한을 바꿀 때 (PATCH, 보낸 항목만 바뀜)"""
+
+    class Meta:
+        model = User
+        fields = ["role", "view_teams", "edit_teams"]
+
+    def _clean_teams(self, value):
+        # 중복을 없애고 생산팀 → 서비스팀 순서로 정리
+        return [team for team in User.Team.values if team in value]
+
+    def validate_view_teams(self, value):
+        return self._clean_teams(value)
+
+    def validate_edit_teams(self, value):
+        return self._clean_teams(value)
+
+    def validate(self, data):
+        user = self.instance
+        view_teams = data.get("view_teams", user.view_teams)
+        edit_teams = data.get("edit_teams", user.edit_teams)
+        if any(team not in view_teams for team in edit_teams):
+            raise serializers.ValidationError({"edit_teams": "수정 권한이 있는 팀은 열람 권한도 있어야 합니다."})
+        role = data.get("role", user.role)
+        if user.pk == self.context["request"].user.pk and role not in User.FULL_ACCESS_ROLES:
+            # 실수로 본인의 관리자 페이지 권한을 없애 아무도 관리할 수 없게 되는 일을 막는다
+            raise serializers.ValidationError({"role": "본인의 역할은 팀장·팀원으로 바꿀 수 없습니다."})
+        return data
