@@ -1,3 +1,4 @@
+import os
 from datetime import date
 
 from rest_framework.test import APITestCase
@@ -185,3 +186,19 @@ class RequesterRegionApiTests(APITestCase):
         self.client.force_authenticate(User.objects.create_user(
             "member", password="x", role=User.Role.MEMBER, view_teams=[S]))
         self.assertEqual(self.client.patch(url, {"region": "경기도", "district": "화성시"}, format="json").status_code, 403)
+
+
+class SeedPartPricesTests(APITestCase):
+    def test_seed_is_virtual_and_does_not_overwrite(self):
+        from django.core.management import call_command
+
+        from .management.commands.seed_part_prices import VIRTUAL_PRICES
+        from .management.commands.seed_service import PARTS
+
+        self.assertEqual(set(VIRTUAL_PRICES), set(PARTS))  # 가상 출장보고서의 부품과 같은 이름
+        PartPrice.objects.create(part_name="Motor", unit_price=1, effective_date=date(2026, 1, 1))  # 사람이 입력한 값
+        call_command("seed_part_prices", stdout=open(os.devnull, "w"))
+        call_command("seed_part_prices", stdout=open(os.devnull, "w"))  # 두 번 실행해도 늘어나지 않음
+        self.assertEqual(list(PartPrice.objects.filter(part_name="Motor").values_list("unit_price", flat=True)), [1])
+        expected = sum(len(v) for k, v in VIRTUAL_PRICES.items() if k != "Motor") + 1
+        self.assertEqual(PartPrice.objects.count(), expected)
