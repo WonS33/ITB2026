@@ -9,7 +9,7 @@ export const quarterOf = (month) => Math.floor((month - 1) / 3) + 1
 
 export const period = reactive({
   year: today.getFullYear(),
-  kind: 'month', // month / quarter / year
+  kind: 'quarter', // month / quarter / year — 처음 화면은 지금 진행 중인 분기 (2026-10-21 결정)
   month: thisMonth,
   quarter: quarterOf(thisMonth),
 })
