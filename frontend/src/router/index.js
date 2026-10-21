@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { auth, canView, homePath, loadMe } from '@/auth'
+import { auth, canEdit, canView, homePath, loadMe } from '@/auth'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -7,7 +7,19 @@ const router = createRouter({
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
     { path: '/', redirect: () => homePath() },
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
-    { path: '/production', component: () => import('@/views/ProductionView.vue'), meta: { team: 'production' } },
+    // 생산팀: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
+    {
+      path: '/production',
+      component: () => import('@/components/TeamLayout.vue'),
+      meta: { team: 'production' },
+      children: [
+        { path: '', component: () => import('@/views/production/DashboardView.vue') },
+        { path: 'serials', component: () => import('@/views/production/SerialsView.vue') },
+        { path: 'calendar', component: () => import('@/views/production/CalendarView.vue') },
+        { path: 'upload/manufacturing', component: () => import('@/views/production/ManufacturingUploadView.vue'), meta: { edit: true } },
+        { path: 'upload/orders', component: () => import('@/views/production/OrderUploadView.vue'), meta: { edit: true } },
+      ],
+    },
     { path: '/service', component: () => import('@/views/ServiceView.vue'), meta: { team: 'service' } },
     { path: '/password', component: () => import('@/views/PasswordView.vue') },
     // meta.fullAccess: 대표·경영지원팀·관리자만
@@ -26,6 +38,7 @@ router.beforeEach(async (to) => {
   }
   if (!auth.user) return { path: '/login', query: { next: to.fullPath } }
   if (to.meta.team && !canView(to.meta.team)) return '/forbidden'
+  if (to.meta.edit && !canEdit(to.meta.team)) return '/forbidden'
   if (to.meta.fullAccess && !auth.user.has_full_access) return '/forbidden'
   return true
 })

@@ -45,24 +45,20 @@ watch(() => props.year, load, { immediate: true })
 </script>
 
 <template>
-  <div class="card mb-4">
-    <div class="card-body d-flex flex-wrap align-items-center gap-3">
-      <div>
-        <div class="text-muted small">{{ year }}년 연간 목표 생산량</div>
-        <div v-if="!editing" class="fs-5 fw-semibold">
-          {{ target === null ? '미입력' : `${target.toLocaleString()}대` }}
-        </div>
-        <form v-else class="d-flex gap-2" @submit.prevent="save">
-          <input v-model="input" type="number" min="0" class="form-control form-control-sm" style="width: 8rem" required />
-          <button class="btn btn-primary btn-sm">저장</button>
-          <button type="button" class="btn btn-outline-secondary btn-sm" @click="editing = false">취소</button>
-        </form>
-      </div>
-      <button v-if="canEdit('production') && !editing" class="btn btn-outline-primary btn-sm" @click="startEdit">
-        {{ target === null ? '입력' : '수정' }}
-      </button>
-      <span v-if="message" class="text-success small">{{ message }}</span>
-      <span v-if="error" class="text-danger small">{{ error }}</span>
-    </div>
+  <!-- 대시보드 제목 줄 옆에 한 줄로 표시 (연 1회 입력하는 값이라 작게) -->
+  <div class="d-flex flex-wrap align-items-center gap-2 small">
+    <span class="text-muted">{{ year }}년 연간 목표 생산량</span>
+    <strong v-if="!editing">{{ target === null ? '미입력' : `${target.toLocaleString()}대` }}</strong>
+    <form v-else class="d-flex gap-2" @submit.prevent="save">
+      <input v-model="input" type="number" min="0" class="form-control form-control-sm" style="width: 7rem"
+             aria-label="연간 목표 생산량" required />
+      <button class="btn btn-primary btn-sm">저장</button>
+      <button type="button" class="btn btn-outline-secondary btn-sm" @click="editing = false">취소</button>
+    </form>
+    <button v-if="canEdit('production') && !editing" class="btn btn-outline-primary btn-sm py-0" @click="startEdit">
+      {{ target === null ? '목표 입력' : '목표 수정' }}
+    </button>
+    <span v-if="message" class="text-success">{{ message }}</span>
+    <span v-if="error" class="text-danger">{{ error }}</span>
   </div>
 </template>

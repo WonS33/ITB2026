@@ -1,13 +1,10 @@
 <script setup>
+// 생산팀 대시보드: 생산 실적(목표 대비) + 판매 실적
 import { ref, watch } from 'vue'
-import FileUpload from '@/components/FileUpload.vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
 import SalesSection from '@/components/production/SalesSection.vue'
-import SerialSearch from '@/components/production/SerialSearch.vue'
-import DueCalendar from '@/components/production/DueCalendar.vue'
 import StatCard from '@/components/StatCard.vue'
 import TargetForm from '@/components/production/TargetForm.vue'
-import { canEdit } from '@/auth'
 import { period } from '@/period'
 import { getDashboard } from '@/api/production'
 
@@ -29,17 +26,15 @@ watch(period, load, { deep: true, immediate: true })
 
 <template>
   <div>
-    <div class="d-flex align-items-center gap-2 mb-3">
-      <h1 class="h4 mb-0">생산팀</h1>
-      <span v-if="canEdit('production')" class="badge bg-primary">열람·수정</span>
-      <span v-else class="badge bg-secondary">열람만</span>
-    </div>
     <PeriodSelector />
-    <TargetForm :year="period.year" @saved="load" />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <template v-if="data">
-      <h2 class="h6 mb-3">{{ data.period.label }} 생산 실적</h2>
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+        <h3 class="h6 mb-0">{{ data.period.label }} 생산 실적</h3>
+        <!-- 연간 목표: 모두 볼 수 있고, 수정 권한자에게만 [목표 수정] 버튼이 보인다 -->
+        <TargetForm :year="period.year" @saved="load" />
+      </div>
       <div class="row g-3 mb-2">
         <div class="col-6 col-lg-3">
           <StatCard title="생산량" :value="data.production.actual" unit="대" hint="제조년월 기준" />
@@ -71,26 +66,5 @@ watch(period, load, { deep: true, immediate: true })
 
       <SalesSection :sales="data.sales" :label="data.period.label" />
     </template>
-
-    <SerialSearch />
-    <DueCalendar />
-
-    <!-- 업로드는 생산팀 수정 권한자에게만 보인다 (백엔드 API에서도 권한을 다시 확인함) -->
-    <FileUpload
-      v-if="canEdit('production')"
-      kind="manufacturing_excel"
-      title="제조내역 엑셀 업로드"
-      accept=".xlsx"
-      help="제조내역 엑셀(.xlsx)을 올리면 추출 결과를 먼저 보여줍니다. 확인·수정한 뒤 [저장]을 눌러야 반영됩니다. 이미 저장된 일련번호는 건너뜁니다."
-      @saved="load"
-    />
-    <FileUpload
-      v-if="canEdit('production')"
-      kind="sales_order_pdf"
-      title="수주서 PDF 업로드"
-      accept=".pdf"
-      help="수주서 PDF(1쪽 = 1건)를 올리면 제품 1개를 1행으로 보여줍니다. PDF에서 잘린 값(…)은 빨간색으로 표시되니 전체 값으로 고친 뒤 저장하세요. 이미 저장된 판매번호는 건너뜁니다."
-      @saved="load"
-    />
   </div>
 </template>
