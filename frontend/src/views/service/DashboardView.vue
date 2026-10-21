@@ -1,21 +1,18 @@
 <script setup>
+// 서비스팀 대시보드: 출장 횟수·유상 비율·월별 추이·지도·순위
 import { computed, ref, watch } from 'vue'
-import FileUpload from '@/components/FileUpload.vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
 import RankingBar from '@/components/RankingBar.vue'
 import ShareDoughnut from '@/components/ShareDoughnut.vue'
 import StatCard from '@/components/StatCard.vue'
 import KoreaMap from '@/components/service/KoreaMap.vue'
 import MonthlyTrend from '@/components/service/MonthlyTrend.vue'
-import TripReportList from '@/components/service/TripReportList.vue'
-import { canEdit } from '@/auth'
 import { paidColor, percent } from '@/charts'
 import { period } from '@/period'
 import { getServiceDashboard } from '@/api/service'
 
 const data = ref(null)
 const error = ref('')
-const list = ref(null)
 // 지역 단위: 시·도별 / 시·군별 (지도와 지역 순위 막대가 함께 바뀜)
 const LEVELS = [{ key: 'region', label: '시·도별' }, { key: 'district', label: '시·군별' }]
 const level = ref('region')
@@ -27,11 +24,6 @@ async function load() {
   } catch (e) {
     error.value = e.message
   }
-}
-
-function onSaved() {
-  load()
-  list.value?.load()
 }
 
 const s = computed(() => data.value?.service)
@@ -47,11 +39,6 @@ watch(period, load, { deep: true, immediate: true })
 
 <template>
   <div>
-    <div class="d-flex align-items-center gap-2 mb-3">
-      <h1 class="h4 mb-0">서비스팀</h1>
-      <span v-if="canEdit('service')" class="badge bg-primary">열람·수정</span>
-      <span v-else class="badge bg-secondary">열람만</span>
-    </div>
     <PeriodSelector />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
@@ -105,7 +92,7 @@ watch(period, load, { deep: true, immediate: true })
         </div>
         <div class="col-lg-4">
           <div class="card h-100"><div class="card-body">
-            <h3 class="h6">교체 부품 순위</h3>
+            <h3 class="h6">교체 부품 순위 <RouterLink to="/service/part-prices" class="small fw-normal ms-1">단가 보기</RouterLink></h3>
             <RankingBar :items="s.by_part" :total="s.by_part.reduce((a, b) => a + b.quantity, 0)" unit="회" />
           </div></div>
         </div>
@@ -123,19 +110,7 @@ watch(period, load, { deep: true, immediate: true })
           </div></div>
         </div>
       </div>
-      <p class="text-muted small">※ 교체 부품 단가는 단가 출처(견적서·부품 단가표 등)를 기업에 확인한 뒤 추가합니다.</p>
     </template>
 
-    <TripReportList ref="list" />
-
-    <!-- 업로드는 서비스팀 수정 권한자에게만 보인다 (백엔드 API에서도 권한을 다시 확인함) -->
-    <FileUpload
-      v-if="canEdit('service')"
-      kind="trip_report_pdf"
-      title="출장보고서 PDF 업로드"
-      accept=".pdf"
-      help="출장보고서 PDF(1쪽 = 1건)를 올리면 보고서 1건을 1행으로 보여줍니다. 시·도는 처음 보는 요청처일 때 직접 고르면 다음부터 자동으로 채워집니다. 잘린 부품명·요청처(…)는 전체 이름으로 고친 뒤 저장하세요."
-      @saved="onSaved"
-    />
   </div>
 </template>

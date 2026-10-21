@@ -61,3 +61,15 @@ def district_label(region, district):
     if region in DISTRICTS:
         return f"{region} (시·군 미지정)"
     return region
+
+
+def region_errors(region, district):
+    """시·도·시·군 검사 → {칸: 메시지}. 업로드 확인 화면과 요청처 지역 관리 화면이 함께 쓴다."""
+    if region not in REGIONS:
+        return {"region": "시·도를 골라 주세요."}
+    districts = DISTRICTS.get(region, [])
+    if districts and district not in districts:
+        return {"district": "시·군을 골라 주세요."}
+    if not districts and district:
+        return {"district": "특별·광역시는 시·군을 비워 주세요."}
+    return {}

@@ -19,4 +19,23 @@ export const TEAM_MENUS = {
       ],
     },
   ],
+  service: [
+    {
+      group: '조회',
+      items: [
+        { label: '대시보드', to: '/service' },
+        { label: '출장보고서 목록', to: '/service/reports' },
+        { label: '교체부품 단가', to: '/service/part-prices' },
+      ],
+    },
+    {
+      group: '데이터 입력',
+      edit: true,
+      items: [
+        { label: '출장보고서 업로드', to: '/service/upload' },
+        { label: '부품 단가 입력', to: '/service/part-prices/input' },
+        { label: '요청처 지역 관리', to: '/service/requester-regions' },
+      ],
+    },
+  ],
 }

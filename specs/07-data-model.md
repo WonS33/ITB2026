@@ -151,10 +151,11 @@
 
 - `report` (FK), `part_name`, `quantity`(있을 경우)
 
-### PartPrice — 부품 단가 (출처 확인 필요)
+### PartPrice — 부품 단가 (출처 확인 전, 웹 직접 입력)
 
-- `part_name`, `unit_price`, `effective_date`
-- 단가 출처(견적서, 부품 단가표)가 확인된 뒤 만든다.
+- `part_name`, `unit_price`(원 단위 정수), `effective_date`(적용 시작일)
+- 같은 부품·같은 적용 시작일은 한 줄만(unique). 단가가 바뀌면 새 적용 시작일로 한 줄을 더한다 → 기간별 변동
+- `part_name`은 TripReportPart.part_name과 같은 이름이어야 사용 내역과 연결된다(FK 없음)
 
 ### RequesterRegion — 요청처 → 시·도·시·군 대응표
 
@@ -183,3 +184,4 @@
 - 2026-10-18: SalesOrder·SalesOrderItem 구현. `order_date`(수주일) 추가. 제조내역과는 FK 없이 "수주서류 번호 = PO번호"로 조회 시 찾아 플랜지를 보완(임시)
 - 2026-10-18: 서비스팀 테이블 구현. `spec`·`serial_no_raw`는 보고서가 아니라 **제품(TripReportProduct)**에 둠 — 보고서 1건에 제품이 여러 개일 수 있고 제품마다 사양·일련번호가 다르기 때문. `purpose`(출장 목적) 추가. PartPrice는 단가 출처 확인 전이라 만들지 않음
 - 2026-10-19: TripReport·RequesterRegion에 `district`(시·군) 추가
+- 2026-10-21: PartPrice 구현 — 단가 출처 확인 전이지만 웹 직접 입력으로 먼저 만듦(사용자 요청). 적용 시작일 이력 방식

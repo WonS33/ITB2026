@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
+from .models import PartPrice, RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
 
 
 class CompanionInline(admin.TabularInline):
@@ -29,3 +29,9 @@ class TripReportAdmin(admin.ModelAdmin):
 class RequesterRegionAdmin(admin.ModelAdmin):
     list_display = ("requester", "region", "district")
     search_fields = ("requester",)
+
+
+@admin.register(PartPrice)
+class PartPriceAdmin(admin.ModelAdmin):
+    list_display = ("part_name", "unit_price", "effective_date")
+    search_fields = ("part_name",)

@@ -12,7 +12,7 @@
 import re
 
 from service.models import RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
-from service.regions import DISTRICTS, REGIONS
+from service.regions import DISTRICTS, REGIONS, region_errors
 
 from .base import UploadHandler, parse_iso_date
 from .pdf_form import TRUNCATED, read_pages
@@ -138,14 +138,7 @@ class TripReportPdfHandler(UploadHandler):
         for key, message in (("requester", "요청처가 없습니다."), ("author", "작성자가 없습니다.")):
             if not values.get(key, "").strip():
                 errors[key] = message
-        if values.get("region") not in REGIONS:
-            errors["region"] = "시·도를 골라 주세요."
-        else:
-            districts = DISTRICTS.get(values["region"], [])
-            if districts and values.get("district") not in districts:
-                errors["district"] = "시·군을 골라 주세요."
-            elif not districts and values.get("district"):
-                errors["district"] = "특별·광역시는 시·군을 비워 주세요."
+        errors.update(region_errors(values.get("region"), values.get("district") or ""))
         if values.get("paid_type") not in PAID_TYPES:
             errors["paid_type"] = "유상 또는 무상을 골라 주세요."
 

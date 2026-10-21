@@ -36,7 +36,7 @@ watch(period, load, { deep: true, immediate: true })
       <h2 class="h6">출장보고서 목록 <span class="text-muted fw-normal">· {{ reports.length }}건</span></h2>
       <div v-if="error" class="alert alert-danger py-2">{{ error }}</div>
       <p v-if="!reports.length" class="text-muted small mb-0">이 기간의 출장보고서가 없습니다.</p>
-      <div v-else class="table-responsive" style="max-height: 320px">
+      <div v-else class="table-responsive" style="max-height: 60vh">
         <table class="table table-sm table-hover small mb-0">
           <thead class="table-light sticky-top">
             <tr><th>출장일</th><th>요청처</th><th>시·도</th><th>비용</th><th>작업</th><th>모델</th><th>작성자</th></tr>

@@ -7,7 +7,7 @@ const router = createRouter({
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
     { path: '/', redirect: () => homePath() },
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
-    // 생산팀: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
+    // 팀 화면: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
     {
       path: '/production',
       component: () => import('@/components/TeamLayout.vue'),
@@ -20,7 +20,19 @@ const router = createRouter({
         { path: 'upload/orders', component: () => import('@/views/production/OrderUploadView.vue'), meta: { edit: true } },
       ],
     },
-    { path: '/service', component: () => import('@/views/ServiceView.vue'), meta: { team: 'service' } },
+    {
+      path: '/service',
+      component: () => import('@/components/TeamLayout.vue'),
+      meta: { team: 'service' },
+      children: [
+        { path: '', component: () => import('@/views/service/DashboardView.vue') },
+        { path: 'reports', component: () => import('@/views/service/ReportsView.vue') },
+        { path: 'part-prices', component: () => import('@/views/service/PartPricesView.vue') },
+        { path: 'upload', component: () => import('@/views/service/TripUploadView.vue'), meta: { edit: true } },
+        { path: 'part-prices/input', component: () => import('@/views/service/PartPriceInputView.vue'), meta: { edit: true } },
+        { path: 'requester-regions', component: () => import('@/views/service/RequesterRegionsView.vue'), meta: { edit: true } },
+      ],
+    },
     { path: '/password', component: () => import('@/views/PasswordView.vue') },
     // meta.fullAccess: 대표·경영지원팀·관리자만
     { path: '/admin', component: () => import('@/views/AdminView.vue'), meta: { fullAccess: true } },

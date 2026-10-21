@@ -76,3 +76,26 @@ class RequesterRegion(models.Model):
 
     def __str__(self):
         return f"{self.requester} → {self.region} {self.district}".strip()
+
+
+class PartPrice(TimeStampedModel):
+    """교체 부품 단가 (웹에서 직접 입력 — 단가 출처는 기업 확인 전, 2026-10-21 결정)
+
+    단가가 바뀌면 덮어쓰지 않고 새 적용 시작일로 한 줄을 더한다 → 기간별 변동을 볼 수 있다.
+    부품명은 출장보고서에 실제로 나온 이름(TripReportPart.part_name)과 같아야 연결된다.
+    """
+
+    part_name = models.CharField("부품명", max_length=100)
+    unit_price = models.PositiveIntegerField("단가(원)")
+    effective_date = models.DateField("적용 시작일")
+
+    class Meta:
+        verbose_name = "부품 단가"
+        verbose_name_plural = verbose_name
+        ordering = ["part_name", "effective_date"]
+        constraints = [
+            models.UniqueConstraint(fields=["part_name", "effective_date"], name="unique_part_price_per_date"),
+        ]
+
+    def __str__(self):
+        return f"{self.part_name} {self.unit_price:,}원 ({self.effective_date}~)"

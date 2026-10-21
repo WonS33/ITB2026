@@ -1,7 +1,7 @@
 // Chart.js 설정: 쓰는 부품만 등록하고, 그래프 색은 여기 한곳에서 정한다
-import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, Tooltip } from 'chart.js'
+import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js'
 
-Chart.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip)
+Chart.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip)
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily
 Chart.defaults.color = '#52514e' // 축 글자: 보조 글자색
 
