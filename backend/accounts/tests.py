@@ -48,8 +48,8 @@ class AuthApiTests(APITestCase):
         make_user("boss", User.Role.CEO)
         self.client.post("/api/auth/login/", {"username": "boss", "password": "test-pass-1234"})
         res = self.client.get("/api/auth/me/")
-        self.assertEqual(res.data["view_teams"], [P, S])
-        self.assertEqual(res.data["edit_teams"], [P, S])
+        self.assertEqual(res.data["view_teams"], [User.Team.MANAGEMENT, P, S])
+        self.assertEqual(res.data["edit_teams"], [User.Team.MANAGEMENT, P, S])
 
     def test_password_is_hashed(self):
         self.assertNotEqual(self.user.password, "test-pass-1234")
@@ -83,7 +83,7 @@ class TeamPermissionTests(APITestCase):
         cases = [
             # 사용자, 조회 결과, 입력 결과
             (make_user("ceo", User.Role.CEO), 200, 200),
-            (make_user("mgmt", User.Role.MANAGEMENT), 200, 200),
+            (make_user("mgmt", User.Role.MEMBER, [User.Team.MANAGEMENT]), 200, 200),
             (make_user("adm", User.Role.ADMIN), 200, 200),
             (make_user("p_leader", User.Role.LEADER, [P], [P]), 200, 200),
             (make_user("p_member", User.Role.MEMBER, [P]), 200, 403),
@@ -179,10 +179,15 @@ class AdminPasswordResetTests(APITestCase):
                 self.assertEqual(self.reset(self.admin).status_code, reset_code)
                 self.client.post("/api/auth/logout/")
         self.assertEqual(self.client.get("/api/admin/users/").status_code, 401)  # 로그인 안 함
-        for role in (User.Role.CEO, User.Role.MANAGEMENT):
-            with self.subTest(role=role):
-                make_user(role, role)
-                self.login(role)
+        full_access = (
+            ("ceo", User.Role.CEO, []),
+            ("mgmt_leader", User.Role.LEADER, [User.Team.MANAGEMENT]),
+            ("mgmt_member", User.Role.MEMBER, [User.Team.MANAGEMENT]),  # 경영지원팀은 팀원도 전체 권한
+        )
+        for username, role, view in full_access:
+            with self.subTest(username=username):
+                make_user(username, role, view)
+                self.login(username)
                 self.assertEqual(self.client.get("/api/admin/users/").status_code, 200)
                 self.client.post("/api/auth/logout/")
 
@@ -270,7 +275,12 @@ class AdminUserUpdateTests(APITestCase):
         res = self.patch(self.admin, {"role": User.Role.MEMBER})
         self.assertEqual(res.status_code, 400)
         self.assertIn("role", res.data)
-        self.assertEqual(self.patch(self.admin, {"role": User.Role.MANAGEMENT}).status_code, 200)
+        self.assertEqual(self.patch(self.admin, {"role": User.Role.CEO}).status_code, 200)
+        # 경영지원팀 소속이면 팀장·팀원으로 바꿔도 전체 권한이 남으므로 허용
+        res = self.patch(self.admin, {"role": User.Role.MEMBER, "view_teams": [User.Team.MANAGEMENT]})
+        self.assertEqual(res.status_code, 200)
+        # 그 상태에서 경영지원팀 소속을 빼면 전체 권한이 사라지므로 막음
+        self.assertEqual(self.patch(self.admin, {"view_teams": [P]}).status_code, 400)
 
     def test_only_full_access_roles(self):
         leader = make_user("svc_leader", User.Role.LEADER, [S], [S])

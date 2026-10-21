@@ -6,7 +6,7 @@ class TeamPermission(BasePermission):
 
     - 조회(GET 등): 그 팀 열람 권한이 있어야 한다
     - 입력·수정·삭제(POST, PUT, PATCH, DELETE): 그 팀 수정 권한이 있어야 한다
-    - 대표·경영지원팀·관리자는 항상 통과한다 (User.has_full_access)
+    - 대표·관리자·경영지원팀 소속은 항상 통과한다 (User.has_full_access)
     """
 
     message = "이 팀 데이터에 대한 권한이 없습니다."
@@ -22,9 +22,9 @@ class TeamPermission(BasePermission):
 
 
 class IsFullAccess(BasePermission):
-    """대표·경영지원팀·관리자만 통과한다 (관리자 페이지, 경영지원팀 메인 등)."""
+    """대표·관리자·경영지원팀 소속만 통과한다 (관리자 페이지, 경영지원팀 메인 등)."""
 
-    message = "대표·경영지원팀·관리자만 사용할 수 있습니다."
+    message = "대표·관리자·경영지원팀만 사용할 수 있습니다."
 
     def has_permission(self, request, view):
         user = request.user

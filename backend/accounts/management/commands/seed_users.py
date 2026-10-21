@@ -4,6 +4,7 @@ from django.core.management.base import BaseCommand, CommandError
 
 from accounts.models import User
 
+M = User.Team.MANAGEMENT
 P = User.Team.PRODUCTION
 S = User.Team.SERVICE
 
@@ -11,6 +12,9 @@ S = User.Team.SERVICE
 SEED_USERS = [
     # username, 성, 이름, 역할, 열람 팀, 수정 팀
     ("admin", "관", "리자", User.Role.ADMIN, [], []),
+    # 경영지원팀 소속이면 팀장·팀원 모두 전체 열람·수정·관리자 페이지 (권한표상 차이 없음)
+    ("mgmt_leader", "한", "경영", User.Role.LEADER, [M], [M]),
+    ("mgmt_member", "윤", "경영", User.Role.MEMBER, [M], []),
     ("prod_leader", "김", "생산", User.Role.LEADER, [P], [P]),
     ("prod_member", "이", "생산", User.Role.MEMBER, [P], []),
     ("svc_leader", "박", "서비스", User.Role.LEADER, [S], [S]),

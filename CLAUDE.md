@@ -90,7 +90,7 @@ npm run dev          # 브라우저: http://localhost:5173  (/api 요청은 Djan
 ```powershell
 python manage.py makemigrations; python manage.py migrate   # 모델을 바꾼 뒤
 python manage.py test                                       # 백엔드 테스트
-python manage.py seed_users                                 # 가상 계정 6개 생성 (비밀번호: .env의 SEED_USER_PASSWORD)
+python manage.py seed_users                                 # 가상 계정 8개 생성 (비밀번호: .env의 SEED_USER_PASSWORD)
 python manage.py seed_production                            # 가상 제조내역·목표 생산량 (그 연도 가상 데이터만 새로 만듦)
 python manage.py seed_production --year 2025 --target 280   # 다른 연도 가상 데이터 (일련번호 4자리 중복 검색 시연용)
 python manage.py make_sample_files                          # 시연용 가상 업로드 파일 → backend/sample_data/
@@ -99,7 +99,7 @@ python manage.py seed_part_prices                           # 가상 부품 단�
 npm run build                                               # 프론트 빌드 오류 확인
 ```
 
-- 가상 계정: `admin`(관리자), `prod_leader`·`prod_member`(생산팀장·팀원), `svc_leader`·`svc_member`(서비스팀장·팀원), `dual_member`(겸직 팀원). Django 기본 관리 화면은 `http://localhost:8000/django-admin/`(admin 계정).
+- 가상 계정: `admin`(관리자), `mgmt_leader`·`mgmt_member`(경영지원팀장·팀원, 권한 동일), `prod_leader`·`prod_member`(생산팀장·팀원), `svc_leader`·`svc_member`(서비스팀장·팀원), `dual_member`(겸직 팀원). Django 기본 관리 화면은 `http://localhost:8000/django-admin/`(admin 계정).
 - Django 6.1은 시작할 때 DB 접속을 확인하므로, PostgreSQL이 꺼져 있으면 `runserver`가 실행되지 않는다.
 - PostgreSQL은 Windows 서비스로 설치하지 않았다. 사용자 이름에 한글이 있으면 공식 설치 프로그램(EDB)이 임시 폴더 경로를 읽지 못해 `getlocales.ps1` 오류로 실패하기 때문이다(2026-10-18 확인). 대신 압축 파일 버전(`postgresql-17.11-5-windows-x64-binaries.zip`)을 `C:\pgsql`에 풀어 쓴다. DB 끄기: `C:\pgsql\bin\pg_ctl.exe -D C:\pgsql\data stop`
 

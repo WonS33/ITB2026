@@ -8,8 +8,11 @@ export const auth = reactive({
   loaded: false, // 처음 한 번 /me 를 확인했는지
 })
 
-export const TEAM_LABELS = { production: '생산팀', service: '서비스팀' }
+export const TEAM_LABELS = { management: '경영지원팀', production: '생산팀', service: '서비스팀' }
+// 화면이 있는 팀만 (경영지원팀 메인 화면은 아직 없음 → 생기면 여기에 추가)
 export const TEAM_ROUTES = { production: '/production', service: '/service' }
+// 상단 메뉴에 보일 팀: 열람 권한이 있고 화면이 있는 팀
+export const menuTeams = () => (auth.user?.view_teams ?? []).filter((team) => TEAM_ROUTES[team])
 
 export async function loadMe() {
   try {
@@ -39,6 +42,6 @@ export const canEdit = (team) => !!auth.user && auth.user.edit_teams.includes(te
 
 // 로그인 직후·첫 화면으로 보낼 주소: 볼 수 있는 첫 팀 화면
 export function homePath() {
-  const team = auth.user?.view_teams[0]
+  const team = menuTeams()[0]
   return team ? TEAM_ROUTES[team] : '/forbidden'
 }

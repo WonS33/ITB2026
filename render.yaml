@@ -1,0 +1,49 @@
+# Render Blueprint — 이 파일 하나로 웹 서버와 DB를 한꺼번에 만든다 (둘 다 무료 플랜)
+# Render 대시보드 → New → Blueprint 에서 이 저장소를 고르면 된다.
+
+services:
+  - type: web
+    name: itb2026
+    runtime: docker          # 저장소 맨 위의 Dockerfile로 빌드
+    plan: free
+    region: singapore        # 한국에서 가장 가까운 지역
+    envVars:
+      - key: DJANGO_SECRET_KEY
+        generateValue: true  # Render가 임의의 긴 비밀 키를 만들어 준다
+      - key: DJANGO_DEBUG
+        value: "False"
+      # DB 접속 정보는 아래 itb2026-db에서 자동으로 채워진다 (settings.py의 DB_* 변수와 같은 이름)
+      - key: DB_NAME
+        fromDatabase:
+          name: itb2026-db
+          property: database
+      - key: DB_USER
+        fromDatabase:
+          name: itb2026-db
+          property: user
+      - key: DB_PASSWORD
+        fromDatabase:
+          name: itb2026-db
+          property: password
+      - key: DB_HOST
+        fromDatabase:
+          name: itb2026-db
+          property: host
+      - key: DB_PORT
+        fromDatabase:
+          name: itb2026-db
+          property: port
+      # 가상 계정 공통 비밀번호 — 코드에 쓰지 않고 Blueprint 만들 때 화면에서 직접 입력한다
+      - key: SEED_USER_PASSWORD
+        sync: false
+      # 첫 배포 때 가상 데이터를 넣을지 (계정이 없을 때만 실행됨 — backend/start.sh)
+      - key: SEED_DEMO_DATA
+        value: "True"
+
+databases:
+  - name: itb2026-db
+    plan: free
+    region: singapore
+    databaseName: itb2026
+    user: itb2026
+    postgresMajorVersion: "17"

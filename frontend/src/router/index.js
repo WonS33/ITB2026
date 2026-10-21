@@ -35,7 +35,7 @@ const router = createRouter({
       ],
     },
     { path: '/password', component: () => import('@/views/PasswordView.vue') },
-    // meta.fullAccess: 대표·경영지원팀·관리자만
+    // meta.fullAccess: 대표·관리자·경영지원팀 소속만
     { path: '/admin', component: () => import('@/views/AdminView.vue'), meta: { fullAccess: true } },
     { path: '/forbidden', component: () => import('@/views/ForbiddenView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },

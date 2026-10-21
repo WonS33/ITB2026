@@ -30,8 +30,11 @@ async function submit() {
 
 <template>
   <div class="container py-5" style="max-width: 400px">
-    <h1 class="h4 mb-4 text-center">경영지표 대시보드</h1>
-    <form class="card card-body" @submit.prevent="submit">
+    <div class="text-center mb-4">
+      <h1 class="login-brand mb-1">뉴토크코리아</h1>
+      <div class="text-muted">경영지표 대시보드</div>
+    </div>
+    <form class="card card-body p-4" @submit.prevent="submit">
       <div class="mb-3">
         <label class="form-label" for="username">아이디</label>
         <input id="username" v-model="username" class="form-control" autocomplete="username" required />
@@ -53,3 +56,11 @@ async function submit() {
     </form>
   </div>
 </template>
+
+<style scoped>
+.login-brand {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: var(--brand);
+}
+</style>

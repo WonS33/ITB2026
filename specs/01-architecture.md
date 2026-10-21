@@ -88,3 +88,4 @@ frontend/
 
 - 2026-10-18: 지침(2026-10-17) 기준으로 최초 작성
 - 2026-10-18: 보조 도구 결정 내용 추가 (Phase 0 환경 세팅)
+- 2026-10-21: Render 무료 플랜 배포 추가 — Docker 서비스 하나에서 Django가 API와 Vue 빌드 결과(whitenoise)를 함께 내보냄, 배포용 웹 서버 gunicorn, 설정은 `render.yaml`(Blueprint)

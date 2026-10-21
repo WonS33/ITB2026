@@ -20,7 +20,7 @@ watch(() => route.path, () => (open.value = false)) // 메뉴를 고르면 접�
       <div class="d-flex align-items-center gap-2 mb-2">
         <h1 class="h5 mb-0">{{ TEAM_LABELS[team] }}</h1>
         <span v-if="canEdit(team)" class="badge bg-primary">열람·수정</span>
-        <span v-else class="badge bg-secondary">열람만</span>
+        <span v-else class="badge bg-light text-dark border">열람만</span>
       </div>
       <button
         type="button"
@@ -54,14 +54,18 @@ watch(() => route.path, () => (open.value = false)) // 메뉴를 고르면 접�
 
 <style scoped>
 .side-menu .nav-link {
-  color: var(--bs-body-color, #212529);
+  color: var(--ink);
+  border-left: 3px solid transparent;
 }
 .side-menu .nav-link:hover {
-  background: #f1f3f5;
+  background: #eef0f3;
 }
+/* 지금 보고 있는 메뉴: 옅은 주황 배경 + 왼쪽 주황 선 */
 .side-menu .nav-link.active {
-  background: #0d6efd;
-  color: #fff;
+  background: var(--brand-soft);
+  color: var(--brand-text);
+  font-weight: 700;
+  border-left-color: var(--brand);
 }
 /* 넓은 화면에서는 [메뉴] 버튼 없이 항상 펼쳐 둔다 */
 @media (min-width: 768px) {

@@ -136,7 +136,7 @@ class UploadFlowTests(APITestCase):
         self.assertEqual(self.upload().status_code, 403)
         self.login(User.Role.LEADER, view=(S,), edit=(S,))  # 서비스팀장
         self.assertEqual(self.upload().status_code, 403)
-        self.login(User.Role.MANAGEMENT, view=(), edit=())  # 경영지원팀: 전체 수정
+        self.login(User.Role.MEMBER, view=(User.Team.MANAGEMENT,), edit=())  # 경영지원팀원: 전체 수정
         self.assertEqual(self.upload().status_code, 201)
 
     def test_other_users_batch_needs_permission(self):

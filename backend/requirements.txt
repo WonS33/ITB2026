@@ -5,14 +5,16 @@ cryptography==50.0.2
 Django==6.1.2
 djangorestframework==3.18.3
 et_xmlfile==2.0.0
+gunicorn==26.2.0
 openpyxl==3.1.5
 pdfminer.six==20260107
 pdfplumber==0.11.10
 pillow==13.0.0
-psycopg==3.3.6
 psycopg-binary==3.3.6
+psycopg==3.3.6
 pycparser==3.11
 pypdfium2==5.14.0
 python-dotenv==1.2.4
 sqlparse==0.6.0
 tzdata==2026.5
+whitenoise==6.12.0

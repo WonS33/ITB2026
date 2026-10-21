@@ -19,3 +19,6 @@ frontend/dist/
 .idea/
 Thumbs.db
 .DS_Store
+
+# Django collectstatic 결과 (배포 때 자동 생성)
+backend/staticfiles/

@@ -33,6 +33,11 @@ DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
+# Render 배포: Render가 서비스 주소(예: itb2026.onrender.com)를 이 환경 변수로 자동으로 넣어 준다
+RENDER_EXTERNAL_HOSTNAME = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
+
 
 # Application definition
 
@@ -53,6 +58,8 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    # 배포 서버에서 정적 파일(관리 화면 CSS, Vue 빌드 결과)을 Django가 직접 내보내게 한다
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
@@ -139,6 +146,13 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.1/howto/static-files/
 
 STATIC_URL = 'static/'
+# collectstatic 명령이 정적 파일을 모아 두는 폴더 (배포용)
+STATIC_ROOT = BASE_DIR / 'staticfiles'
+
+# Vue 빌드 결과 폴더(frontend/dist). 배포 서버에서는 Django가 이 폴더의 화면 파일을 함께 내보낸다
+# → 화면과 API가 같은 주소를 쓰므로 개발 환경(Vite 프록시)처럼 세션 쿠키를 그대로 쓸 수 있다
+FRONTEND_DIST = BASE_DIR.parent / 'frontend' / 'dist'
+WHITENOISE_ROOT = FRONTEND_DIST
 
 
 # Email
@@ -153,6 +167,15 @@ MAILERS = {
 
 # Vite 개발 서버(5173)에서 오는 요청을 CSRF 검사에서 신뢰할 출처로 등록
 CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+if RENDER_EXTERNAL_HOSTNAME:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{RENDER_EXTERNAL_HOSTNAME}")
+
+# 배포(DEBUG=False)에서는 로그인 쿠키를 HTTPS로만 보낸다.
+# Render는 앞단에서 HTTPS를 처리하고 Django에는 HTTP로 넘기므로, 원래 요청이 HTTPS였는지 이 헤더로 알려 준다
+if not DEBUG:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
 
 # Django REST Framework: 세션 로그인을 사용하고, 기본으로 모든 API에 로그인을 요구한다
 # (미로그인 401 / 권한 없음 403 — specs/08-api.md)

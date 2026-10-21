@@ -18,8 +18,8 @@
 | 필드 | 설명 |
 |---|---|
 | (기본) `username`, `password`, `first_name`, `last_name`, `last_login`, `is_active` 등 | AbstractUser 기본 필드 |
-| `role` | `ceo` / `management` / `admin` / `leader` / `member` |
-| `view_teams` | 열람 가능한 팀 목록 (`production`, `service`) |
+| `role` | `ceo` / `admin` / `leader` / `member` (2026-10-19 `management` → 팀으로 이동) |
+| `view_teams` | 열람 가능한 팀 목록 = 소속 팀 (`management`, `production`, `service`). `management` 소속이면 전체 권한 |
 | `edit_teams` | 수정 가능한 팀 목록 (`production`, `service`) |
 | `must_change_password` | 첫 로그인 비밀번호 변경 안내 여부 |
 

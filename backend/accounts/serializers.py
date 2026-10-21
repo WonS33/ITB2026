@@ -36,7 +36,7 @@ class MeSerializer(serializers.ModelSerializer):
     """로그인한 사용자 정보. 화면은 이 값으로 메뉴와 버튼을 보여줄지 정한다.
 
     view_teams, edit_teams는 실제 적용되는 권한을 돌려준다.
-    (대표·경영지원팀·관리자는 저장된 값과 관계없이 모든 팀)
+    (대표·관리자·경영지원팀 소속은 저장된 값과 관계없이 모든 팀)
     """
 
     name = serializers.SerializerMethodField()
@@ -73,7 +73,7 @@ class AdminUserSerializer(MeSerializer):
     """관리자 페이지 직원 목록 한 줄. 내 정보 항목에 마지막 로그인 시각을 더한다.
 
     view_teams, edit_teams는 체크박스에 쓰도록 DB에 저장된 값을 그대로 돌려준다.
-    (대표·경영지원팀·관리자는 저장된 값과 관계없이 전체 권한 → 화면에 "전체"로 표시)
+    (대표·관리자·경영지원팀 소속은 저장된 값과 관계없이 전체 권한 → 화면에 "전체"로 표시)
     """
 
     view_teams = serializers.ListField(read_only=True)
@@ -107,7 +107,7 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
         if any(team not in view_teams for team in edit_teams):
             raise serializers.ValidationError({"edit_teams": "수정 권한이 있는 팀은 열람 권한도 있어야 합니다."})
         role = data.get("role", user.role)
-        if user.pk == self.context["request"].user.pk and role not in User.FULL_ACCESS_ROLES:
+        if user.pk == self.context["request"].user.pk and not User.is_full_access(role, view_teams):
             # 실수로 본인의 관리자 페이지 권한을 없애 아무도 관리할 수 없게 되는 일을 막는다
-            raise serializers.ValidationError({"role": "본인의 역할은 팀장·팀원으로 바꿀 수 없습니다."})
+            raise serializers.ValidationError({"role": "본인의 전체 권한(관리자 페이지 사용)은 없앨 수 없습니다."})
         return data

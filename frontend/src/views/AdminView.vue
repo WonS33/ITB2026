@@ -8,17 +8,19 @@ import { onBeforeRouteLeave } from 'vue-router'
 import { fetchUsers, resetPassword, updateUser } from '@/api/admin'
 import { auth, loadMe, TEAM_LABELS } from '@/auth'
 
-// 백엔드 User.Role과 같은 값. 대표·경영지원팀·관리자는 팀 체크와 관계없이 전체 권한
+// 백엔드 User.Role과 같은 값. 대표·관리자는 팀 체크와 관계없이 전체 권한
 const ROLE_OPTIONS = [
   { value: 'ceo', label: '대표' },
-  { value: 'management', label: '경영지원팀' },
   { value: 'admin', label: '관리자' },
   { value: 'leader', label: '팀장' },
   { value: 'member', label: '팀원' },
 ]
 const ROLE_LABELS = Object.fromEntries(ROLE_OPTIONS.map((r) => [r.value, r.label]))
-const FULL_ACCESS_ROLES = ['ceo', 'management', 'admin']
-const TEAMS = Object.keys(TEAM_LABELS)
+const FULL_ACCESS_ROLES = ['ceo', 'admin']
+// 경영지원팀 소속(열람 범위에 체크)이면 팀장·팀원 모두 전체 권한 — 백엔드 User.FULL_ACCESS_TEAM과 같음
+const FULL_ACCESS_TEAM = 'management'
+const TEAMS = Object.keys(TEAM_LABELS) // 경영지원팀, 생산팀, 서비스팀
+const EDIT_TEAMS = TEAMS.filter((t) => t !== FULL_ACCESS_TEAM) // 경영지원팀은 소속만으로 전체 수정이라 따로 체크 안 함
 const FIELDS = [
   { key: 'role', label: '역할' },
   { key: 'view_teams', label: '열람 범위' },
@@ -36,7 +38,14 @@ const resettingId = ref(null)
 const showConfirm = ref(false)
 const saving = ref(false)
 
-const isFullAccess = (role) => FULL_ACCESS_ROLES.includes(role)
+// r: { role, view_teams } — 저장된 값(users)이나 바꾸고 있는 값(drafts) 모두 같은 모양
+const isFullAccessRole = (role) => FULL_ACCESS_ROLES.includes(role)
+const inFullAccessTeam = (r) => r.view_teams.includes(FULL_ACCESS_TEAM)
+const isFullAccess = (r) => isFullAccessRole(r.role) || inFullAccessTeam(r)
+const teamNames = (list) => list.map((t) => TEAM_LABELS[t]).join(', ')
+
+// 소속팀(보여주기만, DB 항목 아님): 열람 범위에 체크된 팀. 대표·관리자는 팀 체크가 없으면 '-'
+const affiliation = (d) => teamNames(d.view_teams) || (isFullAccessRole(d.role) ? '-' : '없음')
 const sameList = (a, b) => a.length === b.length && a.every((v) => b.includes(v))
 
 function resetDraft(user) {
@@ -56,11 +65,13 @@ const changes = computed(() =>
     .filter((c) => c.fields.length > 0),
 )
 
-// 확인 팝업에 보여줄 글자: 대표·경영지원팀·관리자는 팀 체크와 관계없이 "전체"
-function display(key, value, role) {
-  if (key === 'role') return ROLE_LABELS[value]
-  if (isFullAccess(role)) return '전체'
-  return value.map((t) => TEAM_LABELS[t]).join(', ') || '없음'
+// 확인 팝업에 보여줄 글자. 대표·관리자는 "전체", 경영지원팀 소속은 수정 권한이 "전체"
+function display(key, r) {
+  if (key === 'role') return ROLE_LABELS[r.role]
+  if (isFullAccessRole(r.role)) return '전체'
+  if (key === 'edit_teams' && inFullAccessTeam(r)) return '전체'
+  const names = teamNames(r[key]) || '없음'
+  return key === 'view_teams' && inFullAccessTeam(r) ? `${names} (전체 권한)` : names
 }
 
 async function load() {
@@ -200,12 +211,12 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
             <tr>
               <th>아이디</th>
               <th>이름</th>
+              <th>소속팀</th>
               <th>역할</th>
               <th>열람 범위</th>
               <th>수정 권한</th>
-              <th>비밀번호</th>
               <th>마지막 로그인</th>
-              <th></th>
+              <th class="text-end">비밀번호</th>
             </tr>
           </thead>
           <tbody>
@@ -213,6 +224,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
             <tr v-for="u in users" :key="u.id" :class="{ 'table-warning': changedFields(u).length }">
               <td>{{ u.username }}</td>
               <td>{{ u.name }}</td>
+              <td>{{ affiliation(drafts[u.id]) }}</td>
               <td>
                 <!-- 본인 역할은 바꿀 수 없음 (관리자 페이지 권한을 실수로 없애지 않게, 서버에서도 막음) -->
                 <select
@@ -225,28 +237,50 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
                   <option v-for="r in ROLE_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
                 </select>
               </td>
-              <td v-for="kind in ['view', 'edit']" :key="kind">
-                <span v-if="isFullAccess(drafts[u.id].role)" class="text-muted">전체</span>
+              <!-- 열람 범위: 경영지원팀을 체크하면 전체 권한이라 생산·서비스 체크는 숨긴다 -->
+              <td>
+                <span v-if="isFullAccessRole(drafts[u.id].role)" class="text-muted">전체</span>
                 <template v-else>
-                  <div v-for="team in TEAMS" :key="team" class="form-check form-check-inline mb-0">
+                  <template v-for="team in TEAMS" :key="team">
+                    <div
+                      v-if="team === FULL_ACCESS_TEAM || !inFullAccessTeam(drafts[u.id])"
+                      class="form-check form-check-inline mb-0"
+                    >
+                      <!-- 본인의 경영지원팀 소속은 뺄 수 없음 (관리자 페이지 권한 보호, 서버에서도 막음) -->
+                      <input
+                        :id="`view-${u.id}-${team}`"
+                        class="form-check-input"
+                        type="checkbox"
+                        :checked="drafts[u.id].view_teams.includes(team)"
+                        :disabled="saving || (team === FULL_ACCESS_TEAM && u.id === auth.user.id)"
+                        @change="onTeamToggle(u, 'view', team, $event.target.checked)"
+                      />
+                      <label class="form-check-label small" :for="`view-${u.id}-${team}`">{{ TEAM_LABELS[team] }}</label>
+                    </div>
+                  </template>
+                  <span v-if="inFullAccessTeam(drafts[u.id])" class="small text-muted">→ 전체 권한</span>
+                </template>
+              </td>
+              <!-- 수정 권한: 생산팀·서비스팀만 체크 (대표·관리자·경영지원팀 소속은 전체) -->
+              <td>
+                <span v-if="isFullAccess(drafts[u.id])" class="text-muted">전체</span>
+                <template v-else>
+                  <div v-for="team in EDIT_TEAMS" :key="team" class="form-check form-check-inline mb-0">
                     <input
-                      :id="`${kind}-${u.id}-${team}`"
+                      :id="`edit-${u.id}-${team}`"
                       class="form-check-input"
                       type="checkbox"
-                      :checked="drafts[u.id][`${kind}_teams`].includes(team)"
+                      :checked="drafts[u.id].edit_teams.includes(team)"
                       :disabled="saving"
-                      @change="onTeamToggle(u, kind, team, $event.target.checked)"
+                      @change="onTeamToggle(u, 'edit', team, $event.target.checked)"
                     />
-                    <label class="form-check-label small" :for="`${kind}-${u.id}-${team}`">{{ TEAM_LABELS[team] }}</label>
+                    <label class="form-check-label small" :for="`edit-${u.id}-${team}`">{{ TEAM_LABELS[team] }}</label>
                   </div>
                 </template>
               </td>
-              <td>
-                <span v-if="u.must_change_password" class="badge bg-warning text-dark">초기 비밀번호 사용 중</span>
-                <span v-else class="badge bg-light text-dark border">본인이 변경함</span>
-              </td>
               <td class="small text-muted">{{ formatDate(u.last_login) }}</td>
-              <td class="text-end">
+              <td class="text-end text-nowrap">
+                <span v-if="u.must_change_password" class="small text-muted me-2">초기 비밀번호 사용 중</span>
                 <!-- 본인 비밀번호는 [비밀번호 변경] 메뉴에서 바꾼다 (서버에서도 막음) -->
                 <button
                   v-if="u.id !== auth.user.id"
@@ -298,9 +332,9 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
                     <tr v-for="(f, i) in c.fields" :key="f.key">
                       <td v-if="i === 0" :rowspan="c.fields.length">{{ c.user.name }}<br /><span class="small text-muted">{{ c.user.username }}</span></td>
                       <td>{{ f.label }}</td>
-                      <td class="text-muted">{{ display(f.key, c.user[f.key], c.user.role) }}</td>
+                      <td class="text-muted">{{ display(f.key, c.user) }}</td>
                       <td class="text-center">→</td>
-                      <td class="fw-semibold">{{ display(f.key, drafts[c.user.id][f.key], drafts[c.user.id].role) }}</td>
+                      <td class="fw-semibold">{{ display(f.key, drafts[c.user.id]) }}</td>
                     </tr>
                   </template>
                 </tbody>

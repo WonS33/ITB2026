@@ -1,0 +1,10 @@
+# Docker 이미지에 넣지 않을 파일 (비밀 정보·실제 데이터·용량 큰 폴더)
+.git
+.env
+samples/
+**/node_modules
+**/.venv
+**/__pycache__
+frontend/dist
+backend/media
+backend/staticfiles
