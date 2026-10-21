@@ -4,6 +4,8 @@ import { periodParams } from '@/period'
 export const getServiceDashboard = (period) => apiFetch(`/service/dashboard/?${periodParams(period)}`)
 export const getTripReports = (period) => apiFetch(`/service/reports/?${periodParams(period)}`)
 export const getTripReport = (id) => apiFetch(`/service/reports/${id}/`)
+// 출장보고서 직접 입력 (서비스 수정 권한). 같은 시작일·요청처가 있으면 409 → allow_duplicate: true로 다시 보냄
+export const createTripReport = (data) => apiFetch('/service/reports/', { method: 'POST', body: data })
 
 // 교체 부품 단가 (조회: 서비스 열람 / 추가·삭제: 서비스 수정 권한 — 백엔드에서도 확인함)
 export const getPartPrices = () => apiFetch('/service/part-prices/')

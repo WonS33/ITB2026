@@ -53,6 +53,7 @@
 |---|---|---|---|
 | GET | `/api/service/dashboard/` | 출장 횟수·월별 추이, 유상·무상 비율, 지역별, 부품·모델·담당자 순위 | 서비스 열람 |
 | GET | `/api/service/reports/` | 출장보고서 목록 | 서비스 열람 |
+| POST | `/api/service/reports/` | 출장보고서 1건 직접 입력. 동행자·부품은 이름 목록, 제품은 `{model_name, spec, serial_no_raw, quantity}` 목록. 오류 400(칸별 메시지), 같은 시작일·요청처가 있으면 409 → `allow_duplicate: true`로 다시 보내면 저장 | 서비스 수정 |
 | GET | `/api/service/reports/{id}/` | 출장보고서 상세(고장·작업 내용 포함) | 서비스 열람 |
 | GET | `/api/service/part-prices/` | 부품별 현재·직전 단가, 증감, 이력, 단가 미등록 부품, 부품명 목록 | 서비스 열람 |
 | POST | `/api/service/part-prices/` | 단가 한 줄 추가 (`part_name`, `unit_price`, `effective_date`) | 서비스 수정 |
@@ -80,3 +81,4 @@
 - 2026-10-19: `GET /api/admin/users/`, `POST /api/admin/users/{id}/reset-password/` 구현. 초기화 응답은 `{user, temporary_password}`(Cache-Control: no-store), 본인 초기화는 400. 권한 없으면 403, 미로그인 401
 - 2026-10-19: `PATCH /api/admin/users/{id}/` 구현 — 본문 `role`, `view_teams`, `edit_teams` 중 보낸 항목만 변경(그 외 항목은 무시). 수정 팀이 열람 팀에 없거나 본인을 팀장·팀원으로 바꾸면 400. 응답은 직원 한 줄(`view_teams`, `edit_teams`는 저장된 값)
 - 2026-10-21: 서비스팀 부품 단가(조회·추가·삭제)와 요청처 지역 관리(조회·변경) API 구현
+- 2026-10-21: `POST /api/service/reports/`(출장보고서 직접 입력) 구현. 목록·상세 응답에 `input_method` 추가

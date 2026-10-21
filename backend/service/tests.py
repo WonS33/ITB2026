@@ -202,3 +202,67 @@ class SeedPartPricesTests(APITestCase):
         self.assertEqual(list(PartPrice.objects.filter(part_name="Motor").values_list("unit_price", flat=True)), [1])
         expected = sum(len(v) for k, v in VIRTUAL_PRICES.items() if k != "Motor") + 1
         self.assertEqual(PartPrice.objects.count(), expected)
+
+
+class TripReportManualInputTests(APITestCase):
+    """출장보고서 직접 입력: PDF 업로드와 같은 규칙으로 검사·저장"""
+
+    URL = "/api/service/reports/"
+
+    def setUp(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "svc", password="x", role=User.Role.LEADER, view_teams=[S], edit_teams=[S]))
+
+    def body(self, **overrides):
+        data = {"start_date": "2026-10-20", "end_date": "2026-10-21", "requester": "새빛정수장", "region": "강원특별자치도",
+                "district": "강릉시", "paid_type": "유상", "author": "김가상 대리", "work_type": "수리", "purpose": "가상 A/S",
+                "companions": ["이가상 사원", " "], "parts": ["Main Board", "Motor"],
+                "products": [{"model_name": "AVA03", "spec": "380V", "serial_no_raw": "A800", "quantity": "2"},
+                             {"model_name": "", "spec": "", "serial_no_raw": "", "quantity": ""}],  # 빈 줄은 무시
+                "fault_description": "1. 가상 고장", "work_description": "1. 가상 작업", "work_result": "정상작동"}
+        data.update(overrides)
+        return data
+
+    def test_create_with_children_and_remember_region(self):
+        res = self.client.post(self.URL, self.body(), format="json")
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual((res.data["input_method"], res.data["input_method_display"]), ("manual", "직접 입력"))
+        self.assertEqual(res.data["companions"], ["이가상 사원"])
+        self.assertEqual(res.data["products"], [{"model_name": "AVA03", "spec": "380V", "serial_no_raw": "A800", "quantity": 2}])
+        self.assertEqual(res.data["parts"], ["Main Board", "Motor"])
+        mapping = RequesterRegion.objects.get(requester="새빛정수장")
+        self.assertEqual((mapping.region, mapping.district), ("강원특별자치도", "강릉시"))
+        # 대시보드 집계에도 그대로 들어감
+        s = service_summary(make_period("month", 2026, month=10))
+        self.assertEqual(s["by_district"][0]["name"], "강원 강릉시")
+
+    def test_validation_same_as_upload(self):
+        res = self.client.post(self.URL, self.body(start_date="", district="청주시", paid_type="반반", author=" ",
+                                                   products=[{"model_name": "AVA03", "quantity": "0"}],
+                                                   parts=["Magnetic Contactor (TR Cont…"]), format="json")
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(set(res.data), {"start_date", "district", "paid_type", "author", "products", "parts"})
+        self.assertEqual(self.client.post(self.URL, self.body(end_date="2026-10-01"), format="json").data["end_date"],
+                         "종료일이 시작일보다 빠릅니다.")
+        bad_type = self.client.post(self.URL, self.body(companions="이가상"), format="json")
+        self.assertEqual(bad_type.status_code, 400)
+        self.assertFalse(TripReport.objects.exists())
+
+    def test_duplicate_needs_confirmation(self):
+        self.assertEqual(self.client.post(self.URL, self.body(), format="json").status_code, 201)
+        again = self.client.post(self.URL, self.body(author="박다른 과장"), format="json")
+        self.assertEqual(again.status_code, 409)
+        self.assertEqual(again.data["existing"][0]["author"], "김가상 대리")
+        confirmed = self.client.post(self.URL, self.body(author="박다른 과장", allow_duplicate=True), format="json")
+        self.assertEqual(confirmed.status_code, 201)
+        self.assertEqual(TripReport.objects.count(), 2)
+
+    def test_permissions(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "member", password="x", role=User.Role.MEMBER, view_teams=[S]))
+        self.assertEqual(self.client.post(self.URL, self.body(), format="json").status_code, 403)
+        self.client.force_authenticate(User.objects.create_user(
+            "prod", password="x", role=User.Role.LEADER, view_teams=[P], edit_teams=[P]))
+        self.assertEqual(self.client.post(self.URL, self.body(), format="json").status_code, 403)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.post(self.URL, self.body(), format="json").status_code, 401)

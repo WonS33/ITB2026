@@ -5,17 +5,19 @@
 - 요청처 → 시·도·시·군: 대응표(RequesterRegion)에 있으면 자동으로 채우고, 없으면 확인 화면에서 고른다.
   시·군 목록은 고른 시·도에 따라 바뀐다 (특별·광역시·세종시는 시·군 없음). 저장할 때 고른 값을 대응표에 기억한다.
 - 잘린 값(…)은 오류로 표시해 사람이 고치게 한다 (부품명·요청처 등)
+- 검사·저장 규칙은 웹 직접 입력과 같다 → service/trip_input.py (확인 표 한 행을 보고서 데이터로 바꿔 넘긴다)
 - 중복 확인 기준: 출장 시작일 + 요청처 (보고서 고유 번호가 없어서 — 기업 확인 필요)
   같은 날 같은 곳에 실제로 두 번 간 경우, 확인 화면에서 "중복 아님"을 체크하면 저장할 수 있다
 """
 
 import re
 
-from service.models import RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
-from service.regions import DISTRICTS, REGIONS, region_errors
+from service.models import RequesterRegion, TripReport
+from service.regions import DISTRICTS, REGIONS
+from service.trip_input import PAID_TYPES, clean_report, save_report, validate_report
 
 from .base import UploadHandler, parse_iso_date
-from .pdf_form import TRUNCATED, read_pages
+from .pdf_form import read_pages
 
 LABELS = [
     "요청처 구분", "출장 시작일", "작성일", "요청처(검색불가시)", "요청처", "출장 종료일", "작성자", "현장담당자 / 연락처",
@@ -25,7 +27,6 @@ LABELS = [
 ]
 HEADINGS = ["출장정보", "작업 개요", "제품 목록", "수리 내역", "비고"]
 PRODUCT_HEADERS = ["모델명", "사양", "일련번호", "수량"]
-PAID_TYPES = ["유상", "무상"]
 
 TEXT_FIELDS = {
     "requester_type": "요청처 구분",
@@ -38,8 +39,6 @@ TEXT_FIELDS = {
     "paid_type": "비용청구 유무",
 }
 LONG_FIELDS = {"fault_description": "고장 내용", "work_description": "작업 내용", "work_result": "작업 결과"}
-REPORT_KEYS = list(TEXT_FIELDS) + list(LONG_FIELDS) + ["requester", "region", "district"]
-DATE_FIELDS = ("start_date", "end_date")
 
 
 def split_lines(text):
@@ -121,64 +120,21 @@ class TripReportPdfHandler(UploadHandler):
         return found
 
     def validate(self, values):
-        errors = {}
-        try:
-            start = parse_iso_date(values.get("start_date"))
-            if start is None:
-                errors["start_date"] = "출장 시작일이 없습니다 (월 집계 기준)."
-        except ValueError:
-            start, errors["start_date"] = None, "날짜 형식: YYYY-MM-DD"
-        try:
-            end = parse_iso_date(values.get("end_date"))
-            if start and end and end < start:
-                errors["end_date"] = "종료일이 시작일보다 빠릅니다."
-        except ValueError:
-            errors["end_date"] = "날짜 형식: YYYY-MM-DD"
-
-        for key, message in (("requester", "요청처가 없습니다."), ("author", "작성자가 없습니다.")):
-            if not values.get(key, "").strip():
-                errors[key] = message
-        errors.update(region_errors(values.get("region"), values.get("district") or ""))
-        if values.get("paid_type") not in PAID_TYPES:
-            errors["paid_type"] = "유상 또는 무상을 골라 주세요."
-
-        for line in split_lines_keep(values.get("products")):
-            product = parse_product_line(line)
-            if not product["model_name"] or not product["quantity"].isdigit() or int(product["quantity"]) == 0:
-                errors["products"] = "줄마다 '모델명 | 사양 | 일련번호 | 수량' (수량은 1 이상의 숫자)"
-                break
-
-        for key, *_ in self.columns:
-            if TRUNCATED in values.get(key, "") and key not in errors:
-                errors[key] = "PDF에서 잘린 값(…)입니다. 전체 값으로 고쳐 주세요."
-        limits = {"requester": 100, "author": 50, "purpose": 200, "work_type": 30, "requester_type": 30, "extra_trip": 50}
-        for key, limit in limits.items():
-            if len(values.get(key, "")) > limit and key not in errors:
-                errors[key] = f"{limit}자 이하로 입력해 주세요."
-        return errors
+        return validate_report(to_report_data(values))
 
     def save(self, rows, user):
         for row in rows:
-            v = {k: (val or "").strip() for k, val in row["values"].items()}
-            report = TripReport.objects.create(
-                **{k: v.get(k, "") for k in REPORT_KEYS if k not in DATE_FIELDS},
-                start_date=parse_iso_date(v["start_date"]),
-                end_date=parse_iso_date(v["end_date"]),
-                created_by=user,
-            )
-            for name in split_lines(v["companions"]):
-                TripReportCompanion.objects.create(report=report, name=name)
-            for line in split_lines_keep(v["products"]):
-                p = parse_product_line(line)
-                TripReportProduct.objects.create(report=report, model_name=p["model_name"], spec=p["spec"],
-                                                 serial_no_raw=p["serial_no_raw"], quantity=int(p["quantity"]))
-            for name in split_lines_keep(v["parts"]):
-                TripReportPart.objects.create(report=report, part_name=name)
-            # 확인 화면에서 고른 시·도·시·군을 대응표에 기억 → 다음 업로드부터 자동으로 채움
-            RequesterRegion.objects.update_or_create(
-                requester=v["requester"], defaults={"region": v["region"], "district": v.get("district", "")}
-            )
+            save_report(to_report_data(row["values"]), user, TripReport.InputMethod.PDF)
         return len(rows)
+
+
+def to_report_data(values):
+    """확인 표 한 행(여러 개 값은 줄바꿈으로 나뉜 글자) → 공통 보고서 데이터"""
+    data = {key: values.get(key) for key in values if key not in ("companions", "parts", "products")}
+    data["companions"] = split_lines(values.get("companions"))
+    data["parts"] = split_lines_keep(values.get("parts"))
+    data["products"] = [parse_product_line(line) for line in split_lines_keep(values.get("products"))]
+    return clean_report(data)
 
 
 def split_lines_keep(text):

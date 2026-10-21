@@ -50,7 +50,10 @@ watch(period, load, { deep: true, immediate: true })
               @click="open(r.id)"
             >
               <td class="text-nowrap">{{ r.start_date }}<template v-if="r.end_date && r.end_date !== r.start_date"> ~ {{ r.end_date.slice(5) }}</template></td>
-              <td>{{ r.requester }}</td>
+              <td>
+                {{ r.requester }}
+                <span v-if="r.input_method === 'manual'" class="badge bg-light text-dark border ms-1">직접 입력</span>
+              </td>
               <td class="text-nowrap">{{ r.region }} {{ r.district }}</td>
               <td>{{ r.paid_type }}</td>
               <td>{{ r.work_type || '-' }}</td>
@@ -62,7 +65,10 @@ watch(period, load, { deep: true, immediate: true })
       </div>
 
       <div v-if="detail" class="border rounded p-3 mt-3 small">
-        <h3 class="h6">{{ detail.start_date }} · {{ detail.requester }} ({{ [detail.region, detail.district].filter(Boolean).join(' ') }})</h3>
+        <h3 class="h6">
+          {{ detail.start_date }} · {{ detail.requester }} ({{ [detail.region, detail.district].filter(Boolean).join(' ') }})
+          <span class="badge bg-light text-dark border fw-normal ms-1">{{ detail.input_method_display }}</span>
+        </h3>
         <div class="row g-2 mb-2">
           <div class="col-md-6"><span class="text-muted">출장 목적</span> {{ detail.purpose || '-' }}</div>
           <div class="col-md-3"><span class="text-muted">비용청구</span> {{ detail.paid_type }}</div>

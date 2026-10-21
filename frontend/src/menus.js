@@ -33,6 +33,7 @@ export const TEAM_MENUS = {
       edit: true,
       items: [
         { label: '출장보고서 업로드', to: '/service/upload' },
+        { label: '출장보고서 직접 입력', to: '/service/reports/new' },
         { label: '부품 단가 입력', to: '/service/part-prices/input' },
         { label: '요청처 지역 관리', to: '/service/requester-regions' },
       ],

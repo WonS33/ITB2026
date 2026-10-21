@@ -137,6 +137,7 @@
 | `work_description` | 작업 내용 |
 | `work_result` | 작업 결과 |
 | `author` | 작성자 |
+| `input_method` | 입력 방식: `pdf`(PDF 업로드) / `manual`(직접 입력). 기존 보고서는 `pdf` |
 
 ### TripReportCompanion — 동행자 (여러 명)
 
@@ -185,3 +186,4 @@
 - 2026-10-18: 서비스팀 테이블 구현. `spec`·`serial_no_raw`는 보고서가 아니라 **제품(TripReportProduct)**에 둠 — 보고서 1건에 제품이 여러 개일 수 있고 제품마다 사양·일련번호가 다르기 때문. `purpose`(출장 목적) 추가. PartPrice는 단가 출처 확인 전이라 만들지 않음
 - 2026-10-19: TripReport·RequesterRegion에 `district`(시·군) 추가
 - 2026-10-21: PartPrice 구현 — 단가 출처 확인 전이지만 웹 직접 입력으로 먼저 만듦(사용자 요청). 적용 시작일 이력 방식
+- 2026-10-21: TripReport에 `input_method`(입력 방식) 추가 — 직접 입력과 PDF 업로드를 구분

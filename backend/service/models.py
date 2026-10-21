@@ -21,6 +21,13 @@ class TripReport(TimeStampedModel):
     work_result = models.TextField("작업 결과", blank=True)
     author = models.CharField("작성자", max_length=50)
 
+    class InputMethod(models.TextChoices):
+        PDF = "pdf", "PDF 업로드"
+        MANUAL = "manual", "직접 입력"
+
+    # 데이터 출처 구분 (2026-10-21 추가. 그 전에 저장된 보고서는 모두 PDF 업로드)
+    input_method = models.CharField("입력 방식", max_length=10, choices=InputMethod.choices, default=InputMethod.PDF)
+
     class Meta:
         verbose_name = "출장보고서"
         verbose_name_plural = verbose_name
