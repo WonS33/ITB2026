@@ -3,7 +3,7 @@
 
 services:
   - type: web
-    name: itb2026
+    name: newtork-management
     runtime: docker          # 저장소 맨 위의 Dockerfile로 빌드
     plan: free
     region: singapore        # 한국에서 가장 가까운 지역
