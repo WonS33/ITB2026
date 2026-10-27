@@ -46,8 +46,9 @@ class ServiceSummaryTests(APITestCase):
         self.assertEqual(s["paid"], [{"name": "유상", "quantity": 2}, {"name": "무상", "quantity": 2}])
         self.assertEqual([(r["name"], r["quantity"]) for r in s["by_region"]], [("경기도", 3), ("부산광역시", 1)])
         # 수량이 같으면 이름순
-        self.assertEqual(s["by_model"], [{"name": "AVA03", "quantity": 2}, {"name": "AVA05", "quantity": 2}])
-        self.assertEqual(s["by_part"], [{"name": "Main Board", "quantity": 1}])
+        self.assertEqual(s["by_model"], [{"name": "AVA03", "quantity": 2, "paid": 0, "unpaid": 2},
+                                         {"name": "AVA05", "quantity": 2, "paid": 1, "unpaid": 1}])
+        self.assertEqual([(p["name"], p["quantity"], p["current_price"]) for p in s["by_part"]], [("Main Board", 1, None)])
 
     def test_by_district(self):
         """시·군별: 도는 시·군까지, 특별·광역시는 시·도 하나로, 시·군이 비면 '미지정'"""
@@ -57,6 +58,12 @@ class ServiceSummaryTests(APITestCase):
             {"name": "경기도 (시·군 미지정)", "quantity": 1, "region": "경기도", "district": ""},
             {"name": "부산광역시", "quantity": 1, "region": "부산광역시", "district": ""},
         ])
+
+    def test_part_ranking_has_current_price(self):
+        PartPrice.objects.create(part_name="Main Board", unit_price=100000, effective_date=date(2026, 1, 1))
+        PartPrice.objects.create(part_name="Main Board", unit_price=110000, effective_date=date(2026, 6, 1))
+        part = service_summary(make_period("month", 2026, month=10))["by_part"][0]
+        self.assertEqual((part["current_price"], part["change"], part["change_rate"]), (110000, 10000, 10.0))
 
     def test_person_counted_once_per_report(self):
         s = service_summary(make_period("quarter", 2026, quarter=4))
@@ -70,6 +77,8 @@ class ServiceSummaryTests(APITestCase):
         self.assertEqual(s["trip_count"], 5)
         counts = {m["month"]: m["count"] for m in s["monthly"]}
         self.assertEqual((counts[9], counts[10], counts[1]), (1, 4, 0))
+        october = s["monthly"][9]
+        self.assertEqual((october["paid"], october["unpaid"]), (2, 2))  # 월별 유상·무상 나눠서
         self.assertEqual(len(s["monthly"]), 12)
 
 

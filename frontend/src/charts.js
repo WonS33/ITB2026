@@ -20,5 +20,7 @@ export function industryColor(name) {
 
 export const percent = (part, total) => (total ? Math.round((part / total) * 1000) / 10 : 0)
 
-// 유상·무상 고정 색 (검증된 팔레트의 1·2번)
-export const paidColor = (name) => (name === '유상' ? SERIES_COLORS[0] : name === '무상' ? SERIES_COLORS[1] : OTHER_COLOR)
+// 유상·무상 고정 색: 눈에 덜 띄는 차분한 파랑·모래색 (2026-10-27, 검증 도구로 두 색 구분 확인 — 색약 포함)
+// 모래색은 흰 바탕 대비가 낮아 항상 숫자·표를 함께 보여준다
+export const PAID_COLORS = { 유상: '#4a7fc1', 무상: '#d9a066' }
+export const paidColor = (name) => PAID_COLORS[name] ?? OTHER_COLOR

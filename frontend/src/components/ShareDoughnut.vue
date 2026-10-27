@@ -11,6 +11,7 @@ const props = defineProps({
   colorOf: { type: Function, required: true },
   nameHeader: { type: String, default: '항목' },
   unit: { type: String, default: '대' },
+  size: { type: Number, default: 180 }, // 도넛 크기(px)
 })
 
 const shown = computed(() => props.items.filter((i) => i.quantity > 0))
@@ -45,7 +46,7 @@ const options = computed(() => ({
   <div>
     <p v-if="!shown.length" class="text-muted small mb-0">데이터가 없습니다.</p>
     <div v-else class="d-flex flex-wrap align-items-center gap-3">
-      <div style="width: 180px; height: 180px">
+      <div :style="{ width: `${size}px`, height: `${size}px` }">
         <Doughnut :data="chartData" :options="options" />
       </div>
       <table class="table table-sm small mb-0 w-auto">

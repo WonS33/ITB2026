@@ -94,3 +94,4 @@
 - 2026-10-27: `GET /api/production/due-soon/` 추가. 납기 캘린더 수주 묶음에 `shipped`(출고 대수), `status`(done/partial/pending), `overdue` 추가
 - 2026-10-27: `GET /api/periods/years/` 추가(기간 선택 연도 목록을 데이터에 맞춤)
 - 2026-10-27: `GET /api/production/due-calendar/search/` 추가
+- 2026-10-27: 서비스 대시보드 `monthly[]`에 `paid`(유상)·`unpaid`(무상) 추가. `by_model[]`에 `paid`·`unpaid`(유상·무상 대수), `by_part[]`에 `current_price`·`change`·`change_rate`(부품 단가 화면과 같은 계산) 추가

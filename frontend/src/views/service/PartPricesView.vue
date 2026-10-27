@@ -69,7 +69,7 @@ onMounted(load)
                 </td>
                 <td class="text-end">{{ won(p.previous_price) }}</td>
                 <!-- 증감은 색만으로 구분하지 않고 +/- 기호를 함께 표시 -->
-                <td class="text-end" :class="p.change > 0 ? 'text-danger' : p.change < 0 ? 'text-primary' : ''">{{ changeText(p) }}</td>
+                <td class="text-end" :style="{ color: p.change > 0 ? '#c0392b' : p.change < 0 ? '#2563a8' : '' }">{{ changeText(p) }}</td>
               </tr>
             </tbody>
           </table>
