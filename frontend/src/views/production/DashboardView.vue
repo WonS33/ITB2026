@@ -1,9 +1,10 @@
 <script setup>
-// 생산팀 대시보드: 납기 임박(오늘 기준) + 생산 실적(목표 대비) + 판매 실적
+// 생산팀 대시보드: 납기 임박(오늘 기준) + 생산 실적(목표 대비·비교) + 납기·출고 + 판매 실적
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PeriodSelector from '@/components/PeriodSelector.vue'
 import DueSoon from '@/components/production/DueSoon.vue'
+import DeliveryStatus from '@/components/production/DeliveryStatus.vue'
 import SalesSection from '@/components/production/SalesSection.vue'
 import AchievementRing from '@/components/production/AchievementRing.vue'
 import ProductionBars from '@/components/production/ProductionBars.vue'
@@ -17,10 +18,41 @@ import { getDashboard } from '@/api/production'
 const data = ref(null)
 const error = ref('')
 
+// 비교 기간 (판매 실적과 같은 규칙) + 겹쳐 보기 — 고른 값은 이 브라우저에 기억 (개인 편의용)
+const COMPARES = [
+  { value: 'none', label: '비교 안 함' },
+  { value: 'previous', label: '직전 기간' },
+  { value: 'last_year', label: '전년 동기' },
+]
+const STORAGE_KEY = 'production.dashboard.view'
+function loadView() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')
+    return {
+      compare: COMPARES.some((c) => c.value === saved.compare) ? saved.compare : 'none',
+      showOrders: saved.showOrders !== false, // 처음에는 수주량 선을 보여 줌
+    }
+  } catch {
+    return { compare: 'none', showOrders: true }
+  }
+}
+const view = ref(loadView())
+watch(
+  view,
+  () => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(view.value))
+    } catch {
+      // 저장이 막힌 브라우저에서도 화면은 그대로 동작
+    }
+  },
+  { deep: true },
+)
+
 async function load() {
   error.value = ''
   try {
-    data.value = await getDashboard(period)
+    data.value = await getDashboard(period, view.value.compare)
   } catch (e) {
     error.value = e.message
   }
@@ -50,16 +82,21 @@ const bars = computed(() => {
       value: m.month,
       label: `${m.month}월`,
       actual: m.actual,
+      orders: m.orders,
+      lastYear: m.last_year,
       selected: selected.includes(m.month),
       inProgress: thisYear && m.month === thisMonth,
     }))
   }
   return [1, 2, 3, 4].map((q) => {
     const qMonths = [q * 3 - 2, q * 3 - 1, q * 3]
+    const sum = (key) => months.filter((m) => qMonths.includes(m.month)).reduce((total, m) => total + (m[key] ?? 0), 0)
     return {
       value: q,
       label: `${q}분기`,
-      actual: months.filter((m) => qMonths.includes(m.month)).reduce((sum, m) => sum + m.actual, 0),
+      actual: sum('actual'),
+      orders: sum('orders'),
+      lastYear: sum('last_year'),
       selected: qMonths.some((m) => selected.includes(m)),
       inProgress: thisYear && qMonths.includes(thisMonth),
     }
@@ -87,8 +124,17 @@ const openModel = (model) => router.push({ path: '/production/records', query: {
 
 const total = (items) => items.reduce((sum, i) => sum + i.quantity, 0)
 
-// 기간을 바꾸면 다시 불러온다
-watch(period, load, { deep: true, immediate: true })
+const showLastYear = computed(() => view.value.compare !== 'none')
+// 선택한 기간에 오늘이 들어 있으면 아직 진행 중 → 끝난 비교 기간보다 낮게 나오는 것이 당연함을 알린다
+const periodInProgress = computed(() => {
+  const d = new Date() // 한국 시간 기준 날짜 (toISOString은 UTC라 새벽에 하루 전 날짜가 됨)
+  const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return data.value.period.start <= today && today <= data.value.period.end
+})
+const signed = (n) => (n > 0 ? `▲ ${n}` : n < 0 ? `▼ ${-n}` : '변동 없음')
+
+// 기간·비교 기간을 바꾸면 다시 불러온다
+watch([period, () => view.value.compare], load, { deep: true, immediate: true })
 </script>
 
 <template>
@@ -103,12 +149,29 @@ watch(period, load, { deep: true, immediate: true })
       <div class="card mb-4"><div class="card-body">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
           <h3 class="h6 mb-0">{{ data.period.label }} 생산 실적</h3>
-          <!-- 연간 목표: 모두 볼 수 있고, 수정 권한자에게만 [목표 수정] 버튼이 보인다 -->
-          <TargetForm :year="period.year" @saved="load" />
+          <div class="d-flex flex-wrap align-items-center gap-3">
+            <label class="d-flex align-items-center gap-1 small">
+              <span class="text-muted text-nowrap">비교</span>
+              <select v-model="view.compare" class="form-select form-select-sm w-auto">
+                <option v-for="c in COMPARES" :key="c.value" :value="c.value">{{ c.label }}</option>
+              </select>
+            </label>
+            <!-- 연간 목표: 모두 볼 수 있고, 수정 권한자에게만 [목표 수정] 버튼이 보인다 -->
+            <TargetForm :year="period.year" @saved="load" />
+          </div>
         </div>
         <div class="row g-4 align-items-center">
           <div class="col-xl-5">
             <AchievementRing :production="data.production" />
+            <!-- 비교 기간 대비 생산량 (증감은 ▲▼ 기호와 숫자로) -->
+            <p v-if="data.compare" class="small mt-3 mb-0">
+              {{ data.compare.label }} {{ data.compare.actual.toLocaleString() }}대 대비
+              <strong>{{ signed(data.compare.change) }}대</strong>
+              <span v-if="data.compare.change_rate !== null" class="text-muted">
+                ({{ data.compare.change_rate > 0 ? '+' : '' }}{{ data.compare.change_rate }}%)
+              </span>
+              <span v-if="periodInProgress" class="d-block text-muted">이번 기간은 아직 진행 중이라 끝난 기간보다 적게 보일 수 있습니다.</span>
+            </p>
           </div>
           <div class="col-xl-7">
             <div class="d-flex flex-wrap align-items-center gap-3 small mb-1">
@@ -126,12 +189,19 @@ watch(period, load, { deep: true, immediate: true })
               <span class="text-muted">{{ period.year }}년 · 선택한 기간은 진하게, 누르면 목록</span>
               <span><span class="d-inline-block rounded-1 me-1 align-middle legend-box"></span>생산량</span>
               <span v-if="barTarget !== null"><span class="d-inline-block me-1 align-middle legend-line"></span>{{ barTargetName }} {{ barTarget }}대</span>
+              <span v-if="showLastYear"><span class="d-inline-block rounded-1 me-1 align-middle legend-ghost"></span>전년 같은 {{ barUnit === 'month' ? '달' : '분기' }}</span>
+              <label class="d-flex align-items-center gap-1 mb-0">
+                <input v-model="view.showOrders" type="checkbox" class="form-check-input mt-0" />
+                <span class="d-inline-block align-middle legend-orders"></span>수주량
+              </label>
             </div>
             <ProductionBars
               :bars="bars"
               :target="barTarget"
               :target-name="barTargetName"
               :unit-name="barUnit === 'month' ? '달' : '분기'"
+              :show-orders="view.showOrders"
+              :show-last-year="showLastYear"
               @select="openBar"
             />
           </div>
@@ -141,6 +211,7 @@ watch(period, load, { deep: true, immediate: true })
         </p>
         <p class="text-muted small mt-2 mb-0">
           ※ 당월·분기 목표는 "연간 목표 ÷ 12 × 개월 수"로 나눈 임시 기준입니다 (기업 확인 필요).
+          수주량 = 그 달 납기일인 수주서 제품 수량(판매 실적 기본 기준). 일련번호로 잇지 않고 월 합계만 비교합니다.
         </p>
 
         <hr class="my-3" />
@@ -156,6 +227,8 @@ watch(period, load, { deep: true, immediate: true })
         </div>
       </div></div>
 
+      <DeliveryStatus :delivery="data.delivery" :unshipped="data.unshipped" :label="data.period.label" />
+
       <SalesSection />
     </template>
   </div>
@@ -166,6 +239,15 @@ watch(period, load, { deep: true, immediate: true })
   width: 10px;
   height: 10px;
   background: #4a7fc1;
+}
+.legend-ghost {
+  width: 10px;
+  height: 10px;
+  border: 1.5px dashed #8a8f98;
+}
+.legend-orders {
+  width: 16px;
+  border-top: 2px solid #c26a1f;
 }
 .legend-line {
   width: 18px;

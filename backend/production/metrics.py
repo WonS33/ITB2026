@@ -58,18 +58,140 @@ def _year_records(year):
     return ManufacturingRecord.objects.filter(manufactured_date__year=year)
 
 
-def monthly_production(year):
-    """선택한 연도 1~12월 생산량 + 월 목표(연간 목표 ÷ 12, 목표가 없으면 None)"""
-    counts = dict(
+def _monthly_counts(year):
+    return dict(
         _year_records(year)
         .annotate(m=ExtractMonth("manufactured_date"))
         .values_list("m")
         .annotate(n=Count("id"))
     )
+
+
+def _monthly_orders(year):
+    """월별 수주 수량 (수주서 납기일 기준 — 판매 실적 기본 기준과 같음)"""
+    return dict(
+        SalesOrderItem.objects.filter(order__due_date__year=year)
+        .annotate(m=ExtractMonth("order__due_date"))
+        .values_list("m")
+        .annotate(n=Sum("quantity"))
+    )
+
+
+def monthly_production(year, with_last_year=False):
+    """선택한 연도 1~12월 생산량 + 월 목표(연간 목표 ÷ 12, 목표가 없으면 None)
+
+    - orders: 같은 달 수주 수량(납기일 기준). 일련번호로 잇지 않고 월 합계만 비교한다
+    - last_year: 전년 같은 달 생산량 (with_last_year=True일 때만)
+    """
+    counts = _monthly_counts(year)
+    orders = _monthly_orders(year)
+    last = _monthly_counts(year - 1) if with_last_year else None
     target = AnnualProductionTarget.objects.filter(year=year).first()
+    months = []
+    for m in range(1, 13):
+        row = {"month": m, "actual": counts.get(m, 0), "orders": orders.get(m, 0)}
+        if last is not None:
+            row["last_year"] = last.get(m, 0)
+        months.append(row)
     return {
-        "months": [{"month": m, "actual": counts.get(m, 0)} for m in range(1, 13)],
+        "months": months,
         "monthly_target": round(target.target_quantity / 12, 1) if target else None,
+    }
+
+
+def production_compare(period, compare):
+    """비교 기간 생산량 (판매 실적과 같은 비교 기간 규칙: previous_period)"""
+    if compare == "none":
+        return None
+    p = previous_period(period, compare)
+    previous = ManufacturingRecord.objects.filter(manufactured_date__range=(p.start, p.end)).count()
+    current = ManufacturingRecord.objects.filter(manufactured_date__range=(period.start, period.end)).count()
+    change = current - previous
+    return {
+        "label": p.label,
+        "actual": previous,
+        "change": change,
+        "change_rate": round(change / previous * 100, 1) if previous else None,
+    }
+
+
+def _rate(part, whole):
+    return round(part / whole * 100, 1) if whole else None
+
+
+def delivery_performance(period, today=None):
+    """납기 준수율 (제조내역 1행 = 1대 기준)
+
+    - 대상: 납기일이 기간에 속하고 오늘까지 납기가 이미 온 제품 (납기 전인 제품은 빼고 건수만 안내)
+    - 기한 내 출고: 출고일 ≤ 납기일 / 늦게 출고: 출고일 > 납기일 / 미출고(납기 지남): 출고일 없음
+    - 준수율 = 기한 내 출고 ÷ 대상 × 100
+    - 평균 지연일 = 늦은 제품의 (출고일 또는 오늘) − 납기일 평균
+    """
+    today = today or date.today()
+    in_period = ManufacturingRecord.objects.filter(due_date__range=(period.start, period.end))
+    not_due_yet = in_period.filter(due_date__gt=today).count()
+    rows = list(in_period.filter(due_date__lte=today).values("model_name", "customer", "due_date", "shipped_date"))
+
+    def classify(r):
+        if r["shipped_date"] is None:
+            return "open", (today - r["due_date"]).days
+        if r["shipped_date"] <= r["due_date"]:
+            return "on_time", 0
+        return "late", (r["shipped_date"] - r["due_date"]).days
+
+    def summarize(items):
+        kinds = [classify(r) for r in items]
+        on_time = sum(1 for k, _ in kinds if k == "on_time")
+        delays = [d for k, d in kinds if k != "on_time"]
+        return {
+            "total": len(items),
+            "on_time": on_time,
+            "late": sum(1 for k, _ in kinds if k == "late"),
+            "open": sum(1 for k, _ in kinds if k == "open"),
+            "rate": _rate(on_time, len(items)),
+            "avg_delay_days": round(sum(delays) / len(delays), 1) if delays else None,
+        }
+
+    def by(field):
+        groups = {}
+        for r in rows:
+            groups.setdefault(r[field] or NO_NAME, []).append(r)
+        result = [{"name": name, **summarize(items)} for name, items in groups.items()]
+        # 준수율이 낮은 순 (같으면 대수가 많은 순) → 먼저 챙길 곳이 위로
+        return sorted(result, key=lambda g: (g["rate"], -g["total"], g["name"]))
+
+    return {**summarize(rows), "not_due_yet": not_due_yet, "by_model": by("model_name"), "by_customer": by("customer")}
+
+
+UNSHIPPED_BUCKETS = [(0, 29, "30일 미만"), (30, 59, "30~59일"), (60, None, "60일 이상")]
+
+
+def unshipped_status(today=None, oldest_limit=5):
+    """미출고 현황 (오늘 기준, 기간 선택과 관계없음)
+
+    - 대상: 오늘까지 제조됐고 출고일이 없는 제품
+    - 경과일 = 오늘 − 제조년월(날짜)
+    """
+    today = today or date.today()
+    records = ManufacturingRecord.objects.filter(manufactured_date__lte=today, shipped_date__isnull=True)
+    rows = list(records.order_by("manufactured_date", "serial_full").values(
+        "serial_full", "model_name", "manufactured_date", "due_date", "customer"))
+    for r in rows:
+        r["days"] = (today - r["manufactured_date"]).days
+    buckets = []
+    for low, high, label in UNSHIPPED_BUCKETS:
+        n = sum(1 for r in rows if r["days"] >= low and (high is None or r["days"] <= high))
+        buckets.append({"label": label, "count": n})
+    by_model = {}
+    for r in rows:
+        name = r["model_name"] or NO_NAME
+        by_model[name] = by_model.get(name, 0) + 1
+    return {
+        "as_of": today,
+        "total": len(rows),
+        "buckets": buckets,
+        "by_model": [{"name": k, "quantity": v} for k, v in sorted(by_model.items(), key=lambda kv: (-kv[1], kv[0]))],
+        "oldest": rows[:oldest_limit],
     }
 
 

@@ -8,7 +8,21 @@ from common.periods import period_from_params
 
 from . import lists
 from .due_calendar import due_calendar, due_soon, search_due
-from .metrics import COMPARES, CUSTOMER_BASES, DATE_BASES, PRODUCT_GROUPS, model_names, monthly_production, production_by_model, production_summary, sales_summary, year_progress
+from .metrics import (
+    COMPARES,
+    CUSTOMER_BASES,
+    DATE_BASES,
+    PRODUCT_GROUPS,
+    delivery_performance,
+    model_names,
+    monthly_production,
+    production_by_model,
+    production_compare,
+    production_summary,
+    sales_summary,
+    unshipped_status,
+    year_progress,
+)
 from .industry_map import INDUSTRIES
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
@@ -54,15 +68,19 @@ def _period_info(period):
 
 
 class ProductionDashboardView(ProductionApiView):
-    """GET /api/production/dashboard/?year=&period=&month=&quarter= — 생산팀 화면 집계"""
+    """GET /api/production/dashboard/?year=&period=&month=&quarter=&compare=none|previous|last_year — 생산팀 화면 집계"""
 
     def get(self, request):
         period = period_from_params(request.query_params)
+        compare = _choice(request.query_params, "compare", COMPARES, "none")
         return Response(
             {
                 "period": _period_info(period),
                 "production": production_summary(period),
-                "monthly": monthly_production(period.year),
+                "compare": production_compare(period, compare),
+                "monthly": monthly_production(period.year, with_last_year=compare != "none"),
+                "delivery": delivery_performance(period),
+                "unshipped": unshipped_status(),
                 "year_progress": year_progress(period.year),
                 "by_model": production_by_model(period),
                 # 모델 색을 기간이 바뀌어도 같게 하려고 전체 모델명 목록(가나다순)을 함께 보낸다

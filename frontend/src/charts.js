@@ -1,7 +1,8 @@
 // Chart.js 설정: 쓰는 부품만 등록하고, 그래프 색은 여기 한곳에서 정한다
-import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, LineElement, PointElement, Tooltip } from 'chart.js'
+import { ArcElement, BarElement, CategoryScale, Chart, LinearScale, LineController, LineElement, PointElement, Tooltip } from 'chart.js'
 
-Chart.register(ArcElement, BarElement, CategoryScale, LinearScale, LineElement, PointElement, Tooltip)
+// LineController: 막대 그래프 안에 선(수주량)을 겹쳐 그릴 때 필요
+Chart.register(ArcElement, BarElement, CategoryScale, LinearScale, LineController, LineElement, PointElement, Tooltip)
 Chart.defaults.font.family = getComputedStyle(document.body).fontFamily
 Chart.defaults.color = '#52514e' // 축 글자: 보조 글자색
 

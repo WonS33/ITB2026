@@ -74,7 +74,7 @@ class YearOverviewTests(APITestCase):
     def test_monthly(self):
         m = monthly_production(2026)
         self.assertEqual(len(m["months"]), 12)
-        self.assertEqual(m["months"][0], {"month": 1, "actual": 12})
+        self.assertEqual(m["months"][0], {"month": 1, "actual": 12, "orders": 0})
         self.assertEqual(m["months"][2]["actual"], 0)
         self.assertEqual(m["monthly_target"], 10.0)
         self.assertIsNone(monthly_production(2025)["monthly_target"])
@@ -424,6 +424,77 @@ class SalesOptionsTests(APITestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.data["sales"]["compare"]["total"], 1)
         self.assertEqual(self.client.get(f"{base}&date_basis=x").status_code, 400)
+
+
+class ProductionInsightTests(APITestCase):
+    """생산 실적 비교·납기 준수율·미출고 현황·월별 수주량"""
+
+    TODAY = date(2026, 10, 27)
+
+    def rec(self, serial, made, due=None, shipped=None, model="NTI-01", customer="가람"):
+        return ManufacturingRecord.objects.create(
+            serial_full=f"N8226{serial}", serial_short=serial, manufactured_date=made, due_date=due,
+            shipped_date=shipped, model_name=model, customer=customer)
+
+    def test_compare(self):
+        from .metrics import production_compare
+
+        add_records(2026, 10, 6, start=1)
+        add_records(2025, 10, 4, start=100)
+        add_records(2026, 9, 3, start=200)
+        oct_ = make_period("month", 2026, month=10)
+        self.assertIsNone(production_compare(oct_, "none"))
+        self.assertEqual(production_compare(oct_, "last_year"),
+                         {"label": "2025년 10월", "actual": 4, "change": 2, "change_rate": 50.0})
+        self.assertEqual(production_compare(oct_, "previous")["actual"], 3)
+
+    def test_monthly_orders_and_last_year(self):
+        from .models import SalesOrder, SalesOrderItem
+
+        add_records(2025, 3, 2, start=1)
+        o = SalesOrder.objects.create(sales_no="S1", industry="가스", due_date=date(2026, 3, 5))
+        SalesOrderItem.objects.create(order=o, product_name="제수 150A: NTI-03", quantity=7)
+        m = monthly_production(2026, with_last_year=True)["months"][2]
+        self.assertEqual((m["orders"], m["last_year"]), (7, 2))
+        self.assertNotIn("last_year", monthly_production(2026)["months"][0])
+
+    def test_delivery_performance(self):
+        from .metrics import delivery_performance
+
+        self.rec("0001", date(2026, 10, 1), due=date(2026, 10, 10), shipped=date(2026, 10, 9))  # 기한 내
+        self.rec("0002", date(2026, 10, 1), due=date(2026, 10, 10), shipped=date(2026, 10, 14), model="NTI-02")  # 4일 늦음
+        self.rec("0003", date(2026, 10, 1), due=date(2026, 10, 20), model="NTI-02")  # 미출고, 7일 지남
+        self.rec("0004", date(2026, 10, 1), due=date(2026, 11, 5))  # 납기 전 → 제외
+        d = delivery_performance(make_period("quarter", 2026, quarter=4), today=self.TODAY)
+        self.assertEqual((d["total"], d["on_time"], d["late"], d["open"], d["not_due_yet"]), (3, 1, 1, 1, 1))
+        self.assertEqual(d["rate"], 33.3)
+        self.assertEqual(d["avg_delay_days"], 5.5)  # (4 + 7) ÷ 2
+        self.assertEqual(d["by_model"][0]["name"], "NTI-02")  # 준수율 낮은 순
+        self.assertEqual(d["by_model"][0]["rate"], 0.0)
+
+    def test_unshipped_status(self):
+        from .metrics import unshipped_status
+
+        self.rec("0001", date(2026, 10, 20))  # 7일
+        self.rec("0002", date(2026, 9, 1), model="NTI-02")  # 56일
+        self.rec("0003", date(2026, 7, 1))  # 118일
+        self.rec("0004", date(2026, 7, 1), shipped=date(2026, 8, 1))  # 출고됨 → 제외
+        self.rec("0005", date(2026, 11, 1))  # 아직 제조 전 날짜 → 제외
+        u = unshipped_status(today=self.TODAY)
+        self.assertEqual(u["total"], 3)
+        self.assertEqual([b["count"] for b in u["buckets"]], [1, 1, 1])
+        self.assertEqual(u["oldest"][0]["serial_full"], "N82260003")
+        self.assertEqual(u["by_model"][0], {"name": "NTI-01", "quantity": 2})
+
+    def test_dashboard_compare_param(self):
+        user = User.objects.create_user("v", password="x", role=User.Role.MEMBER, view_teams=[P])
+        self.client.force_authenticate(user)
+        base = "/api/production/dashboard/?year=2026&period=month&month=10"
+        res = self.client.get(f"{base}&compare=last_year")
+        self.assertEqual(res.data["compare"]["label"], "2025년 10월")
+        self.assertIn("last_year", res.data["monthly"]["months"][0])
+        self.assertIsNone(self.client.get(base).data["compare"])
+        self.assertEqual(self.client.get(f"{base}&compare=x").status_code, 400)
 
 
 class ListApiTests(APITestCase):
