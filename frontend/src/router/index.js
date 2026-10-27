@@ -14,10 +14,13 @@ const router = createRouter({
       meta: { team: 'production' },
       children: [
         { path: '', component: () => import('@/views/production/DashboardView.vue') },
+        { path: 'records', component: () => import('@/views/production/RecordsView.vue') },
+        { path: 'orders', component: () => import('@/views/production/OrdersView.vue') },
         { path: 'serials', component: () => import('@/views/production/SerialsView.vue') },
         { path: 'calendar', component: () => import('@/views/production/CalendarView.vue') },
         { path: 'upload/manufacturing', component: () => import('@/views/production/ManufacturingUploadView.vue'), meta: { edit: true } },
         { path: 'upload/orders', component: () => import('@/views/production/OrderUploadView.vue'), meta: { edit: true } },
+        { path: 'uploads', component: () => import('@/views/UploadHistoryView.vue'), meta: { edit: true } },
       ],
     },
     {
@@ -33,6 +36,7 @@ const router = createRouter({
         { path: 'part-prices/input', component: () => import('@/views/service/PartPriceInputView.vue'), meta: { edit: true } },
         { path: 'upload/quotes', component: () => import('@/views/service/QuoteUploadView.vue'), meta: { edit: true } },
         { path: 'requester-regions', component: () => import('@/views/service/RequesterRegionsView.vue'), meta: { edit: true } },
+        { path: 'uploads', component: () => import('@/views/UploadHistoryView.vue'), meta: { edit: true } },
       ],
     },
     { path: '/password', component: () => import('@/views/PasswordView.vue') },

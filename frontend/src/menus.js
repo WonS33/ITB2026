@@ -6,6 +6,8 @@ export const TEAM_MENUS = {
       group: '조회',
       items: [
         { label: '대시보드', to: '/production' },
+        { label: '제조내역', to: '/production/records' },
+        { label: '수주 내역', to: '/production/orders' },
         { label: '일련번호 조회', to: '/production/serials' },
         { label: '납기 캘린더', to: '/production/calendar' },
       ],
@@ -16,6 +18,7 @@ export const TEAM_MENUS = {
       items: [
         { label: '제조내역 업로드', to: '/production/upload/manufacturing' },
         { label: '수주서 업로드', to: '/production/upload/orders' },
+        { label: '업로드 이력', to: '/production/uploads' },
       ],
     },
   ],
@@ -37,6 +40,7 @@ export const TEAM_MENUS = {
         { label: '부품 단가 입력', to: '/service/part-prices/input' },
         { label: '견적서 업로드', to: '/service/upload/quotes' },
         { label: '요청처 지역 관리', to: '/service/requester-regions' },
+        { label: '업로드 이력', to: '/service/uploads' },
       ],
     },
   ],

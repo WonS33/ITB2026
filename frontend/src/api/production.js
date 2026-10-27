@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, downloadFile } from './client'
 import { periodParams } from '@/period'
 
 export const getTarget = (year) => apiFetch(`/production/targets/${year}/`)
@@ -12,3 +12,19 @@ export const getDueCalendar = (year, month) => apiFetch(`/production/due-calenda
 export const getDueSoon = () => apiFetch('/production/due-soon/')
 // 납기 캘린더 검색 (모든 달: 수주번호·판매처·사업명·일련번호·거래처 주문번호)
 export const searchDue = (q) => apiFetch(`/production/due-calendar/search/?q=${encodeURIComponent(q)}`)
+
+// 목록 화면: 기간 + 걸러내기 조건(빈 값은 빼고 보냄) + 쪽 번호
+function listParams(period, filters = {}, page) {
+  const params = new URLSearchParams(periodParams(period))
+  Object.entries(filters).forEach(([k, v]) => v && params.set(k, v))
+  if (page) params.set('page', page)
+  return params.toString()
+}
+// 제조내역 목록 (제조년월 기준) — filters: { q, model, shipped: 'yes'|'no' }
+export const getRecords = (period, filters, page) => apiFetch(`/production/records/?${listParams(period, filters, page)}`)
+export const exportRecords = (period, filters) =>
+  downloadFile(`/production/records/export/?${listParams(period, filters)}`, '제조내역.xlsx')
+// 수주 내역 목록 (납기일 기준) — filters: { q, industry }
+export const getOrders = (period, filters, page) => apiFetch(`/production/orders/?${listParams(period, filters, page)}`)
+export const exportOrders = (period, filters) =>
+  downloadFile(`/production/orders/export/?${listParams(period, filters)}`, '수주내역.xlsx')

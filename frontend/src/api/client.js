@@ -42,3 +42,17 @@ export async function apiFetch(path, { method = 'GET', body } = {}) {
   if (!res.ok) throw new ApiError(res.status, data)
   return data
 }
+
+// 파일 내려받기 (엑셀 등): 서버가 보낸 파일 이름(filename*)으로 저장한다
+export async function downloadFile(path, fallbackName) {
+  const res = await fetch(`/api${path}`, { credentials: 'same-origin' })
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => null))
+  const match = (res.headers.get('Content-Disposition') || '').match(/filename\*=UTF-8''([^;]+)/)
+  const name = match ? decodeURIComponent(match[1]) : fallbackName
+  const url = URL.createObjectURL(await res.blob())
+  const a = document.createElement('a')
+  a.href = url
+  a.download = name
+  a.click()
+  URL.revokeObjectURL(url)
+}

@@ -10,4 +10,8 @@ urlpatterns = [
     path("due-calendar/", views.DueCalendarView.as_view()),
     path("due-calendar/search/", views.DueSearchView.as_view()),
     path("due-soon/", views.DueSoonView.as_view()),
+    path("records/", views.RecordListView.as_view()),
+    path("records/export/", views.RecordExportView.as_view()),
+    path("orders/", views.OrderListView.as_view()),
+    path("orders/export/", views.OrderExportView.as_view()),
 ]

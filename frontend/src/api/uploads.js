@@ -11,3 +11,6 @@ export function uploadFile(kind, file) {
 export const updateBatch = (id, rows) => apiFetch(`/uploads/${id}/`, { method: 'PATCH', body: { rows } })
 export const confirmBatch = (id) => apiFetch(`/uploads/${id}/confirm/`, { method: 'POST' })
 export const cancelBatch = (id) => apiFetch(`/uploads/${id}/cancel/`, { method: 'POST' })
+
+// 업로드 이력 (team: production | service, 그 팀 수정 권한)
+export const getUploadHistory = (team) => apiFetch(`/uploads/?team=${team}`)

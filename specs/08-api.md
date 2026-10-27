@@ -46,12 +46,16 @@
 | 메서드 | 주소 | 기능 | 권한 |
 |---|---|---|---|
 | GET / PUT | `/api/production/targets/{year}/` | 연간 목표 생산량 | 조회: 생산 열람 / 입력: 생산 수정 |
-| GET | `/api/production/dashboard/` | 생산량 달성률·부족치, 산업 분야·거래처·제품별 판매량 | 생산 열람 |
+| GET | `/api/production/dashboard/` | 생산량 달성률·부족치, 월별 생산량·월 목표, 연간 목표 진행·연말 예상(예측), 모델별 생산량, 산업 분야·거래처·제품별 판매량 | 생산 열람 |
 | GET | `/api/production/serials/?q=0001` | 일련번호 검색 (4자리·전체) | 생산 열람 |
 | GET | `/api/production/serials/{serial_full}/` | 일련번호 11개 항목 상세 | 생산 열람 |
 | GET | `/api/production/due-calendar/search/?q=` | 납기 캘린더 검색: 수주번호·판매처·사업명·일련번호·거래처 주문번호, 모든 달, 최근 납기부터 최대 50건(`total`로 전체 건수). 검색어가 비면 400 | 생산 열람 |
 | GET | `/api/production/due-soon/` | 납기 임박: 출고가 끝나지 않은 수주 중 오늘부터 14일 안 + 납기 지남(최근 30일). 항목마다 `d_day`, `status`, `shipped`/`quantity` | 생산 열람 |
 | GET | `/api/production/due-calendar/?year=2026&month=10` | 당월 납기 캘린더 | 생산 열람 |
+| GET | `/api/production/records/?(기간)&q=&model=&shipped=yes\|no&page=` | 제조내역 목록(제조년월 기준, 100건씩). `counts`(전체·출고 완료·출고 전, 출고 상태로 거르기 전 기준), `total`, `model_names`. 잘못된 shipped·page는 400 | 생산 열람 |
+| GET | `/api/production/records/export/?(목록과 같은 조건)` | 걸러 낸 제조내역 전체 .xlsx | 생산 열람 |
+| GET | `/api/production/orders/?(기간)&q=&industry=&page=` | 수주 내역 목록(납기일 기준, 100건씩, 제품 정보 포함). `counts`(건수·제품 수량), `industries` | 생산 열람 |
+| GET | `/api/production/orders/export/?(목록과 같은 조건)` | 걸러 낸 수주 내역 .xlsx (제품 1개 = 1행) | 생산 열람 |
 
 ## 5. 서비스팀
 
@@ -72,6 +76,7 @@
 
 | 메서드 | 주소 | 기능 | 권한 |
 |---|---|---|---|
+| GET | `/api/uploads/?team=production\|service` | 업로드 이력: 그 팀 파일 종류만, 최근 100건(올린 시각·사람·종류·파일 이름·상태·추출 행 수·저장 건수) | 해당 팀 수정 |
 | POST | `/api/uploads/` | 파일 업로드 + 추출 (`kind` 지정). 추출 결과와 누락·중복·형식 오류 목록을 돌려줌. DB에는 아직 저장하지 않음 | 해당 팀 수정 |
 | PATCH | `/api/uploads/{id}/` | 확인 화면에서 수정한 추출 결과 반영 | 해당 팀 수정 |
 | POST | `/api/uploads/{id}/confirm/` | 최종 저장 (기준 번호로 중복 제외) | 해당 팀 수정 |
@@ -95,3 +100,4 @@
 - 2026-10-27: `GET /api/periods/years/` 추가(기간 선택 연도 목록을 데이터에 맞춤)
 - 2026-10-27: `GET /api/production/due-calendar/search/` 추가
 - 2026-10-27: 서비스 대시보드 `monthly[]`에 `paid`(유상)·`unpaid`(무상) 추가. `by_model[]`에 `paid`·`unpaid`(유상·무상 대수), `by_part[]`에 `current_price`·`change`·`change_rate`(부품 단가 화면과 같은 계산) 추가
+- 2026-10-27: 제조내역·수주 내역 목록과 엑셀 내려받기(`records/`, `records/export/`, `orders/`, `orders/export/`), 업로드 이력(`GET /api/uploads/?team=`) 추가. 생산팀 대시보드 `period`에 `months` 추가

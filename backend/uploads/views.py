@@ -1,5 +1,6 @@
 """업로드 API (specs/08-api.md 6절) — 추출 → 확인·수정 → 저장
 
+GET   /api/uploads/?team=production  업로드 이력 (그 팀 파일 종류만, 최근 100건, 그 팀 수정 권한)
 POST  /api/uploads/               파일 업로드 + 추출 (DB에는 아직 저장하지 않음)
 PATCH /api/uploads/{id}/          확인 화면에서 고친 값·제외 여부 반영 후 다시 검사
 POST  /api/uploads/{id}/confirm/  최종 저장 (이미 있는 기준 번호는 건너뜀)
@@ -48,7 +49,45 @@ def _batch_data(batch):
     }
 
 
+HISTORY_LIMIT = 100
+
+
+def _uploader_name(user):
+    if user is None:
+        return "-"
+    return f"{user.last_name}{user.first_name}" or user.username
+
+
 class UploadCreateView(APIView):
+    def get(self, request):
+        team = request.query_params.get("team")
+        kinds = [kind for kind, handler in HANDLERS.items() if handler.team == team]
+        if not kinds:
+            raise ValidationError({"team": "team은 production 또는 service여야 합니다."})
+        if not request.user.can_edit(team):
+            raise PermissionDenied("이 팀의 업로드 이력을 볼 권한이 없습니다.")
+        batches = UploadBatch.objects.filter(kind__in=kinds).select_related("created_by")[:HISTORY_LIMIT]
+        return Response(
+            {
+                "limit": HISTORY_LIMIT,
+                "results": [
+                    {
+                        "id": b.id,
+                        "created_at": b.created_at,
+                        "uploaded_by": _uploader_name(b.created_by),
+                        "kind": b.kind,
+                        "kind_display": b.get_kind_display(),
+                        "file_name": b.file_name,
+                        "status": b.status,
+                        "status_display": b.get_status_display(),
+                        "row_count": len(b.extracted_data.get("rows", [])),
+                        "saved_count": b.saved_count,
+                    }
+                    for b in batches
+                ],
+            }
+        )
+
     def post(self, request):
         kind = request.data.get("kind")
         handler = HANDLERS.get(kind)

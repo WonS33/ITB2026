@@ -12,7 +12,10 @@ const props = defineProps({
   nameHeader: { type: String, default: '항목' },
   unit: { type: String, default: '대' },
   size: { type: Number, default: 180 }, // 도넛 크기(px)
+  clickable: { type: Boolean, default: false }, // true면 조각·표 줄을 누를 때 select(이름)을 알린다
 })
+const emit = defineEmits(['select'])
+const pick = (name) => props.clickable && emit('select', name)
 
 const shown = computed(() => props.items.filter((i) => i.quantity > 0))
 
@@ -33,6 +36,12 @@ const options = computed(() => ({
   maintainAspectRatio: false,
   animation: false,
   cutout: '60%',
+  onClick: (event, elements) => {
+    if (elements.length) pick(shown.value[elements[0].index].name)
+  },
+  onHover: (event, elements) => {
+    if (props.clickable) event.native.target.style.cursor = elements.length ? 'pointer' : 'default'
+  },
   plugins: {
     legend: { display: false }, // 오른쪽 범례 표로 대신함
     tooltip: {
@@ -54,7 +63,7 @@ const options = computed(() => ({
           <tr><th>{{ nameHeader }}</th><th class="text-end">{{ unit === '회' ? '횟수' : '대수' }}</th><th class="text-end">비중</th></tr>
         </thead>
         <tbody>
-          <tr v-for="i in items" :key="i.name">
+          <tr v-for="i in items" :key="i.name" :role="clickable ? 'button' : undefined" @click="pick(i.name)">
             <td>
               <span class="d-inline-block rounded-circle me-1 align-middle" :style="{ width: '10px', height: '10px', background: colorOf(i.name) }"></span>
               {{ i.name }}

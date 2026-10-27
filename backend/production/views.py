@@ -6,8 +6,10 @@ from rest_framework.views import APIView
 from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
+from . import lists
 from .due_calendar import due_calendar, due_soon, search_due
-from .metrics import production_summary, sales_summary
+from .metrics import model_names, monthly_production, production_by_model, production_summary, sales_summary, year_progress
+from .industry_map import INDUSTRIES
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
 from .serials import SEARCH_LIMIT, search_serials, serial_detail
@@ -47,6 +49,10 @@ class ProductionTargetView(ProductionApiView):
         return Response({"year": year, "target_quantity": target.target_quantity})
 
 
+def _period_info(period):
+    return {"kind": period.kind, "label": period.label, "start": period.start, "end": period.end, "months": period.months}
+
+
 class ProductionDashboardView(ProductionApiView):
     """GET /api/production/dashboard/?year=&period=&month=&quarter= — 생산팀 화면 집계"""
 
@@ -54,8 +60,13 @@ class ProductionDashboardView(ProductionApiView):
         period = period_from_params(request.query_params)
         return Response(
             {
-                "period": {"kind": period.kind, "label": period.label, "start": period.start, "end": period.end},
+                "period": _period_info(period),
                 "production": production_summary(period),
+                "monthly": monthly_production(period.year),
+                "year_progress": year_progress(period.year),
+                "by_model": production_by_model(period),
+                # 모델 색을 기간이 바뀌어도 같게 하려고 전체 모델명 목록(가나다순)을 함께 보낸다
+                "model_names": model_names(),
                 "sales": sales_summary(period),
             }
         )
@@ -110,3 +121,64 @@ class DueSoonView(ProductionApiView):
 
     def get(self, request):
         return Response(due_soon())
+
+
+class RecordListView(ProductionApiView):
+    """GET /api/production/records/?(기간)&q=&model=&shipped=yes|no&page= — 제조내역 목록 (제조년월 기준, 100건씩)"""
+
+    def get(self, request):
+        params = request.query_params
+        period = period_from_params(params)
+        page = lists.page_number(params)
+        before_shipped, records = lists.filter_records(period, params)
+        rows, page_info = lists.paginate(records, page)
+        return Response(
+            {
+                "period": _period_info(period),
+                # 출고 상태 버튼에 붙일 건수는 출고 상태로 거르기 전 기준
+                "counts": lists.record_counts(before_shipped),
+                "results": [lists.record_row(r) for r in rows],
+                **page_info,
+                "model_names": model_names(),
+            }
+        )
+
+
+class RecordExportView(ProductionApiView):
+    """GET /api/production/records/export/?(목록과 같은 조건) — 걸러 낸 제조내역 전체를 엑셀로"""
+
+    def get(self, request):
+        period = period_from_params(request.query_params)
+        _, records = lists.filter_records(period, request.query_params)
+        return lists.excel_response(f"제조내역_{period.label}.xlsx", "제조내역", lists.RECORD_COLUMNS, records)
+
+
+class OrderListView(ProductionApiView):
+    """GET /api/production/orders/?(기간)&q=&industry=&page= — 수주 내역 목록 (납기일 기준, 100건씩)"""
+
+    def get(self, request):
+        params = request.query_params
+        period = period_from_params(params)
+        page = lists.page_number(params)
+        orders = lists.filter_orders(period, params)
+        rows, page_info = lists.paginate(orders.prefetch_related("items"), page)
+        return Response(
+            {
+                "period": _period_info(period),
+                "counts": lists.order_counts(orders),
+                "results": [lists.order_row(o) for o in rows],
+                **page_info,
+                "industries": INDUSTRIES,
+            }
+        )
+
+
+class OrderExportView(ProductionApiView):
+    """GET /api/production/orders/export/?(목록과 같은 조건) — 걸러 낸 수주 내역 전체를 엑셀로 (제품 1개 = 1행)"""
+
+    def get(self, request):
+        period = period_from_params(request.query_params)
+        orders = lists.filter_orders(period, request.query_params)
+        return lists.excel_response(
+            f"수주내역_{period.label}.xlsx", "수주내역", lists.ORDER_COLUMNS, lists.order_excel_rows(orders)
+        )

@@ -167,6 +167,32 @@ from .handlers.pdf_form import CHAR_MAP, FormPage, Word
 SAMPLE_PDF = os.path.join(settings.BASE_DIR.parent, "samples", "생산팀 제조내역 샘플_2.pdf")
 
 
+class UploadHistoryTests(APITestCase):
+    def setUp(self):
+        self.editor = User.objects.create_user("editor", password="x", role=User.Role.LEADER, first_name="생산",
+                                               last_name="김", view_teams=[P], edit_teams=[P])
+        UploadBatch.objects.create(kind="manufacturing_excel", file_name="a.xlsx", created_by=self.editor,
+                                   extracted_data={"rows": [{}, {}]}, status="saved", saved_count=2)
+        UploadBatch.objects.create(kind="trip_report_pdf", file_name="b.pdf", created_by=self.editor)
+
+    def test_only_team_kinds(self):
+        self.client.force_authenticate(self.editor)
+        res = self.client.get("/api/uploads/?team=production")
+        self.assertEqual(res.status_code, 200)
+        row = res.data["results"][0]
+        self.assertEqual(len(res.data["results"]), 1)
+        self.assertEqual((row["file_name"], row["uploaded_by"], row["row_count"], row["saved_count"]),
+                         ("a.xlsx", "김생산", 2, 2))
+
+    def test_needs_edit_permission(self):
+        viewer = User.objects.create_user("viewer", password="x", role=User.Role.MEMBER, view_teams=[P])
+        self.client.force_authenticate(viewer)
+        self.assertEqual(self.client.get("/api/uploads/?team=production").status_code, 403)
+        self.client.force_authenticate(self.editor)
+        self.assertEqual(self.client.get("/api/uploads/?team=service").status_code, 403)
+        self.assertEqual(self.client.get("/api/uploads/?team=x").status_code, 400)
+
+
 class PdfFormTests(APITestCase):
     def test_char_map_restores_digits_and_symbols(self):
         self.assertEqual("NTK-SO-".translate(CHAR_MAP), "NTK-SO-260000")

@@ -5,7 +5,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 from common.periods import make_period
 
-from .metrics import production_summary
+from .metrics import model_names, monthly_production, production_by_model, production_summary, year_progress
 from .models import AnnualProductionTarget, ManufacturingRecord
 
 P = User.Team.PRODUCTION
@@ -60,6 +60,52 @@ class ProductionSummaryTests(APITestCase):
         s = production_summary(make_period("year", 2026))
         self.assertIsNone(s["achievement_rate"])
         self.assertEqual(s["shortfall"], 0)
+
+
+class YearOverviewTests(APITestCase):
+    """월별 생산량·연간 목표까지 남은 양·연말 예상·모델별 생산량"""
+
+    def setUp(self):
+        AnnualProductionTarget.objects.create(year=2026, target_quantity=120)  # 월 목표 10대
+        add_records(2026, 1, 12, start=1)
+        add_records(2026, 2, 6, start=100)
+        add_records(2026, 11, 3, start=200)  # 오늘(10월) 이후 날짜는 누적에서 빠져야 함
+
+    def test_monthly(self):
+        m = monthly_production(2026)
+        self.assertEqual(len(m["months"]), 12)
+        self.assertEqual(m["months"][0], {"month": 1, "actual": 12})
+        self.assertEqual(m["months"][2]["actual"], 0)
+        self.assertEqual(m["monthly_target"], 10.0)
+        self.assertIsNone(monthly_production(2025)["monthly_target"])
+
+    def test_current_year_progress(self):
+        p = year_progress(2026, today=date(2026, 10, 27))
+        self.assertEqual(p["cumulative"], 18)
+        self.assertEqual(p["remaining"], 102)
+        self.assertEqual(p["remaining_months"], 3)  # 10·11·12월
+        self.assertEqual(p["required_per_month"], 34.0)
+        # 18대 ÷ 300일 × 365일 = 21.9 → 22
+        self.assertEqual(p["forecast"], 22)
+
+    def test_past_year_has_no_forecast(self):
+        p = year_progress(2026, today=date(2027, 3, 1))
+        self.assertEqual(p["cumulative"], 21)
+        self.assertEqual(p["remaining_months"], 0)
+        self.assertIsNone(p["required_per_month"])
+        self.assertIsNone(p["forecast"])
+
+    def test_future_year_and_no_target(self):
+        p = year_progress(2027, today=date(2026, 10, 27))
+        self.assertEqual((p["cumulative"], p["remaining_months"], p["forecast"]), (0, 12, None))
+        self.assertIsNone(p["remaining"])  # 2027년 목표 없음
+
+    def test_by_model(self):
+        ManufacturingRecord.objects.filter(serial_short__in=["0001", "0002", "0003"]).update(model_name="NTI-04")
+        rows = production_by_model(make_period("quarter", 2026, quarter=1))
+        self.assertEqual(rows[0], {"name": "(미입력)", "quantity": 15})
+        self.assertEqual(rows[1], {"name": "NTI-04", "quantity": 3})
+        self.assertEqual(model_names(), ["NTI-04"])  # 중복 없이, 빈 모델명 제외
 
 
 class ProductionApiTests(APITestCase):
@@ -297,3 +343,80 @@ class SalesSummaryTests(APITestCase):
         record = ManufacturingRecord(serial_full="N82260001", po_no="26006")
         self.assertEqual(flanges_for(record), "F10A")
         self.assertIsNone(flanges_for(ManufacturingRecord(serial_full="N82260002", po_no="99999")))
+
+
+class ListApiTests(APITestCase):
+    """제조내역 목록·수주 내역 목록·엑셀 내려받기"""
+
+    def setUp(self):
+        from .models import SalesOrder, SalesOrderItem
+
+        user = User.objects.create_user("viewer", password="x", role=User.Role.MEMBER, view_teams=[P])
+        self.client.force_authenticate(user)
+        add_records(2026, 10, 3, start=1)
+        add_records(2026, 9, 2, start=50)  # 3분기 → 4분기 목록에서 빠져야 함
+        ManufacturingRecord.objects.filter(serial_short="0001").update(
+            model_name="NTI-04", customer="가람상사", shipped_date=date(2026, 10, 20)
+        )
+        o = SalesOrder.objects.create(sales_no="NTK-SO-26006", industry="상하수도", customer="가람",
+                                      project_name="가상 정수장", due_date=date(2026, 10, 3))
+        SalesOrderItem.objects.create(order=o, product_name="제수 150A", quantity=3)
+        SalesOrderItem.objects.create(order=o, product_name="제수 200A", quantity=1)
+        SalesOrder.objects.create(sales_no="NTK-SO-26007", industry="발전소", due_date=date(2026, 10, 9))
+        SalesOrder.objects.create(sales_no="NTK-SO-26008", industry="발전소", due_date=date(2026, 7, 1))
+
+    Q4 = "year=2026&period=quarter&quarter=4"
+
+    def test_records_period_and_counts(self):
+        res = self.client.get(f"/api/production/records/?{self.Q4}")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["total"], 3)
+        self.assertEqual(res.data["counts"], {"total": 3, "shipped": 1, "not_shipped": 2})
+
+    def test_records_filters(self):
+        get = lambda extra: self.client.get(f"/api/production/records/?{self.Q4}&{extra}").data
+        self.assertEqual([r["serial_full"] for r in get("q=가람")["results"]], ["N82260001"])
+        self.assertEqual(get("model=NTI-04")["total"], 1)
+        self.assertEqual(get("model=(미입력)")["total"], 2)
+        shipped_no = get("shipped=no")
+        self.assertEqual(shipped_no["total"], 2)
+        self.assertEqual(shipped_no["counts"]["total"], 3)  # 버튼 건수는 출고 상태로 거르기 전 기준
+        self.assertEqual(self.client.get(f"/api/production/records/?{self.Q4}&shipped=x").status_code, 400)
+        self.assertEqual(self.client.get(f"/api/production/records/?{self.Q4}&page=0").status_code, 400)
+
+    def test_records_export(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        res = self.client.get(f"/api/production/records/export/?{self.Q4}&shipped=no")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("filename*=UTF-8''", res["Content-Disposition"])
+        ws = load_workbook(BytesIO(res.content)).active
+        self.assertEqual(ws.cell(1, 1).value, "일련번호")
+        self.assertEqual(ws.max_row, 3)  # 제목 + 출고 전 2건
+        self.assertEqual(ws.cell(2, 6).value, "2026-10-10")  # 날짜는 YYYY-MM-DD 글자
+
+    def test_orders(self):
+        data = self.client.get(f"/api/production/orders/?{self.Q4}").data
+        self.assertEqual(data["counts"], {"total": 2, "quantity": 4})
+        first = [o for o in data["results"] if o["sales_no"] == "NTK-SO-26006"][0]
+        self.assertEqual((first["quantity"], len(first["items"])), (4, 2))
+        self.assertEqual(self.client.get(f"/api/production/orders/?{self.Q4}&industry=발전소").data["total"], 1)
+        # 품명으로 찾아도 수주서가 한 번만 나온다
+        self.assertEqual(self.client.get(f"/api/production/orders/?{self.Q4}&q=제수").data["total"], 1)
+
+    def test_orders_export_one_row_per_item(self):
+        from io import BytesIO
+
+        from openpyxl import load_workbook
+
+        res = self.client.get(f"/api/production/orders/export/?{self.Q4}")
+        ws = load_workbook(BytesIO(res.content)).active
+        self.assertEqual(ws.max_row, 4)  # 제목 + 제품 2행 + 제품 없는 수주 1행
+
+    def test_service_member_cannot_view(self):
+        user = User.objects.create_user("svc", password="x", role=User.Role.MEMBER, view_teams=[S])
+        self.client.force_authenticate(user)
+        self.assertEqual(self.client.get(f"/api/production/records/?{self.Q4}").status_code, 403)
+        self.assertEqual(self.client.get(f"/api/production/orders/export/?{self.Q4}").status_code, 403)

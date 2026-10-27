@@ -1,8 +1,10 @@
 <script setup>
 // 일련번호 조회: 4자리 또는 전체 번호로 검색 → (여러 건이면 목록에서 선택) → 11개 항목 표시
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { getSerial, searchSerials } from '@/api/production'
 
+const route = useRoute()
 const query = ref('')
 const results = ref(null) // 검색 결과 목록
 const detail = ref(null) // 선택한 일련번호 상세
@@ -34,6 +36,14 @@ async function select(serialFull) {
     error.value = e.message
   }
 }
+
+// 제조내역 목록에서 줄을 눌러 오면 ?q=일련번호 로 바로 검색해 상세를 연다
+onMounted(() => {
+  if (route.query.q) {
+    query.value = String(route.query.q)
+    search()
+  }
+})
 
 const isObject = (v) => v !== null && typeof v === 'object'
 </script>
