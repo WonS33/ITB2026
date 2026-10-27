@@ -178,7 +178,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', onBeforeUnload)
 
 <template>
   <div class="pb-5">
-    <h1 class="h4 mb-3">관리자 설정</h1>
+    <h1 class="page-title mb-4">관리자 설정</h1>
 
     <!-- 임시 비밀번호는 이때 한 번만 보인다 (서버에는 해시만 저장됨) -->
     <div v-if="resetResult" class="alert alert-success">

@@ -44,7 +44,7 @@ const list = (v) => (Array.isArray(v) ? v : v ? [v] : [])
 
 <template>
   <div style="max-width: 440px">
-    <h1 class="h4 mb-3">비밀번호 변경</h1>
+    <h1 class="page-title mb-4">비밀번호 변경</h1>
 
     <div v-if="firstLogin && !done" class="alert alert-warning">
       <strong>처음 로그인하셨습니다.</strong> 관리자가 발급한 초기 비밀번호를 본인만 아는 비밀번호로 바꿔 주세요.
