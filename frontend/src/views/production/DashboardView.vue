@@ -156,7 +156,7 @@ watch(period, load, { deep: true, immediate: true })
         </div>
       </div></div>
 
-      <SalesSection :sales="data.sales" :label="data.period.label" />
+      <SalesSection />
     </template>
   </div>
 </template>

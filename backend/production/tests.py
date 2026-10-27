@@ -328,9 +328,11 @@ class SalesSummaryTests(APITestCase):
 
         s = sales_summary(make_period("month", 2026, month=10))
         self.assertEqual(s["total"], 6)
-        self.assertEqual(s["by_industry"], [{"name": "상하수도", "quantity": 4}, {"name": "발전소", "quantity": 2}])
-        self.assertEqual(s["by_customer"][0], {"name": "가람", "quantity": 4})
-        self.assertEqual(s["by_product"], [{"name": "제수 150A", "quantity": 5}, {"name": "제수 200A", "quantity": 1}])
+        pick = lambda rows: [(r["name"], r["quantity"]) for r in rows]
+        self.assertEqual(pick(s["by_industry"]), [("상하수도", 4), ("발전소", 2)])
+        self.assertEqual(pick(s["by_customer"])[0], ("가람", 4))
+        self.assertEqual(pick(s["by_product"]), [("제수 150A", 5), ("제수 200A", 1)])
+        self.assertIsNone(s["by_product"][0]["change"])  # 비교 없음
 
     def test_quarter_includes_november(self):
         from .metrics import sales_summary
@@ -343,6 +345,85 @@ class SalesSummaryTests(APITestCase):
         record = ManufacturingRecord(serial_full="N82260001", po_no="26006")
         self.assertEqual(flanges_for(record), "F10A")
         self.assertIsNone(flanges_for(ManufacturingRecord(serial_full="N82260002", po_no="99999")))
+
+
+class SalesOptionsTests(APITestCase):
+    """판매 실적 설정: 기준 날짜·거래처 기준·제품 묶음·비교 기간·교차 필터"""
+
+    def setUp(self):
+        from .models import SalesOrder, SalesOrderItem
+
+        def order(no, industry, customer, due, ordered, items, final=""):
+            o = SalesOrder.objects.create(sales_no=no, industry=industry, customer=customer, due_date=due,
+                                          order_date=ordered, final_orderer=final)
+            for name, qty in items:
+                SalesOrderItem.objects.create(order=o, product_name=name, quantity=qty)
+
+        order("A", "상하수도", "가람", date(2026, 10, 3), date(2026, 9, 1),
+              [("제수 150A: NTI-03", 3), ("제수 200A: NTI-04", 1)], final="가상 발주처")
+        order("B", "발전소", "다온", date(2026, 10, 9), date(2026, 10, 1), [("버터플라이 150A: NTI-05", 2), ("특수 품목", 1)])
+        order("C", "상하수도", "가람", date(2026, 9, 20), None, [("제수 150A: NTI-03", 4)])  # 9월 납기, 수주일 없음
+        order("D", "상하수도", "가람", date(2025, 10, 5), date(2025, 9, 1), [("제수 150A: NTI-03", 1)])
+
+    def summary(self, **kw):
+        from .metrics import sales_summary
+
+        return sales_summary(make_period("month", 2026, month=10), **kw)
+
+    @staticmethod
+    def rows(rows):
+        return {r["name"]: r["quantity"] for r in rows}
+
+    def test_product_groups(self):
+        self.assertEqual(self.rows(self.summary(product_group_by="model")["by_product"]),
+                         {"NTI-03": 3, "NTI-04": 1, "NTI-05": 2, "기타(형식 다름)": 1})
+        self.assertEqual(self.rows(self.summary(product_group_by="size")["by_product"]),
+                         {"150A": 5, "200A": 1, "기타(형식 다름)": 1})
+        self.assertEqual(self.rows(self.summary(product_group_by="type")["by_product"]),
+                         {"제수": 4, "버터플라이": 2, "기타(형식 다름)": 1})
+
+    def test_date_basis(self):
+        s = self.summary(date_basis="order")  # 수주일 10월 = B만
+        self.assertEqual(s["total"], 3)
+        self.assertEqual(s["missing_date_orders"], 1)  # 수주일이 빈 C
+        self.assertEqual(self.summary()["missing_date_orders"], 0)
+
+    def test_customer_basis(self):
+        self.assertEqual(self.rows(self.summary(customer_basis="final_orderer")["by_customer"]),
+                         {"가상 발주처": 4, "(미입력)": 3})
+
+    def test_cross_filter_keeps_own_ranking(self):
+        s = self.summary(industry="상하수도")
+        self.assertEqual(s["total"], 4)
+        self.assertEqual(self.rows(s["by_industry"]), {"상하수도": 4, "발전소": 3})  # 자기 순위는 전체
+        self.assertEqual(self.rows(s["by_customer"]), {"가람": 4})
+        s = self.summary(product_group_by="model", product="NTI-03")
+        self.assertEqual((s["total"], self.rows(s["by_customer"])), (3, {"가람": 3}))
+
+    def test_compare(self):
+        s = self.summary(compare="previous")  # 9월: C 4대
+        self.assertEqual(s["compare"], {"label": "2026년 9월", "total": 4, "change": 3})
+        garam = [r for r in s["by_customer"] if r["name"] == "가람"][0]
+        self.assertEqual((garam["previous"], garam["change"]), (4, 0))
+        s = self.summary(compare="last_year")  # 2025년 10월: D 1대
+        self.assertEqual(s["compare"]["label"], "2025년 10월")
+        self.assertEqual(s["compare"]["total"], 1)
+
+    def test_previous_period_wraps_year(self):
+        from .metrics import previous_period
+
+        self.assertEqual(previous_period(make_period("month", 2026, month=1), "previous").label, "2025년 12월")
+        self.assertEqual(previous_period(make_period("quarter", 2026, quarter=1), "previous").label, "2025년 4분기")
+        self.assertEqual(previous_period(make_period("year", 2026), "previous").label, "2025년")
+
+    def test_api_validates_choices(self):
+        user = User.objects.create_user("v", password="x", role=User.Role.MEMBER, view_teams=[P])
+        self.client.force_authenticate(user)
+        base = "/api/production/sales/?year=2026&period=month&month=10"
+        res = self.client.get(f"{base}&product_group=model&compare=last_year")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["sales"]["compare"]["total"], 1)
+        self.assertEqual(self.client.get(f"{base}&date_basis=x").status_code, 400)
 
 
 class ListApiTests(APITestCase):

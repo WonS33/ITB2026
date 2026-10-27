@@ -46,7 +46,8 @@
 | 메서드 | 주소 | 기능 | 권한 |
 |---|---|---|---|
 | GET / PUT | `/api/production/targets/{year}/` | 연간 목표 생산량 | 조회: 생산 열람 / 입력: 생산 수정 |
-| GET | `/api/production/dashboard/` | 생산량 달성률·부족치, 월별 생산량·월 목표, 연간 목표 진행·연말 예상(예측), 모델별 생산량, 산업 분야·거래처·제품별 판매량 | 생산 열람 |
+| GET | `/api/production/dashboard/` | 생산량 달성률·부족치, 월별 생산량·월 목표, 연간 목표 진행·연말 예상(예측), 모델별 생산량 (판매 실적은 `sales/`로 분리) | 생산 열람 |
+| GET | `/api/production/sales/?(기간)&date_basis=due\|order\|delivery&customer_basis=customer\|final_orderer&product_group=name\|model\|size\|type&compare=none\|previous\|last_year&industry=&customer=&product=` | 판매 실적: 총 판매량, 산업 분야·거래처·제품 순위(항목마다 `previous`·`change`), `compare`(비교 기간 이름·합계·증감), `missing_date_orders`. 잘못된 설정 값은 400 | 생산 열람 |
 | GET | `/api/production/serials/?q=0001` | 일련번호 검색 (4자리·전체) | 생산 열람 |
 | GET | `/api/production/serials/{serial_full}/` | 일련번호 11개 항목 상세 | 생산 열람 |
 | GET | `/api/production/due-calendar/search/?q=` | 납기 캘린더 검색: 수주번호·판매처·사업명·일련번호·거래처 주문번호, 모든 달, 최근 납기부터 최대 50건(`total`로 전체 건수). 검색어가 비면 400 | 생산 열람 |
@@ -101,3 +102,4 @@
 - 2026-10-27: `GET /api/production/due-calendar/search/` 추가
 - 2026-10-27: 서비스 대시보드 `monthly[]`에 `paid`(유상)·`unpaid`(무상) 추가. `by_model[]`에 `paid`·`unpaid`(유상·무상 대수), `by_part[]`에 `current_price`·`change`·`change_rate`(부품 단가 화면과 같은 계산) 추가
 - 2026-10-27: 제조내역·수주 내역 목록과 엑셀 내려받기(`records/`, `records/export/`, `orders/`, `orders/export/`), 업로드 이력(`GET /api/uploads/?team=`) 추가. 생산팀 대시보드 `period`에 `months` 추가
+- 2026-10-27: `GET /api/production/sales/`(판매 실적 설정·비교·교차 필터) 추가, 대시보드 응답에서 `sales` 분리

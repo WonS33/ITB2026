@@ -8,7 +8,7 @@ from common.periods import period_from_params
 
 from . import lists
 from .due_calendar import due_calendar, due_soon, search_due
-from .metrics import model_names, monthly_production, production_by_model, production_summary, sales_summary, year_progress
+from .metrics import COMPARES, CUSTOMER_BASES, DATE_BASES, PRODUCT_GROUPS, model_names, monthly_production, production_by_model, production_summary, sales_summary, year_progress
 from .industry_map import INDUSTRIES
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
@@ -67,7 +67,37 @@ class ProductionDashboardView(ProductionApiView):
                 "by_model": production_by_model(period),
                 # 모델 색을 기간이 바뀌어도 같게 하려고 전체 모델명 목록(가나다순)을 함께 보낸다
                 "model_names": model_names(),
-                "sales": sales_summary(period),
+            }
+        )
+
+
+def _choice(params, name, choices, default):
+    value = params.get(name) or default
+    if value not in choices:
+        raise ValidationError({name: f"{name}는 {', '.join(choices)} 중 하나여야 합니다."})
+    return value
+
+
+class SalesView(ProductionApiView):
+    """GET /api/production/sales/?(기간)&date_basis=&customer_basis=&product_group=&compare=&industry=&customer=&product=
+    판매 실적 — 직원이 기준 날짜·거래처 기준·제품 묶음·비교 기간·교차 필터를 바꿔 본다"""
+
+    def get(self, request):
+        params = request.query_params
+        period = period_from_params(params)
+        return Response(
+            {
+                "period": _period_info(period),
+                "sales": sales_summary(
+                    period,
+                    date_basis=_choice(params, "date_basis", DATE_BASES, "due"),
+                    customer_basis=_choice(params, "customer_basis", CUSTOMER_BASES, "customer"),
+                    product_group_by=_choice(params, "product_group", PRODUCT_GROUPS, "name"),
+                    compare=_choice(params, "compare", COMPARES, "none"),
+                    industry=params.get("industry") or "",
+                    customer=params.get("customer") or "",
+                    product=params.get("product") or "",
+                ),
             }
         )
 
