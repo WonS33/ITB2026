@@ -13,11 +13,14 @@
 from collections import defaultdict
 from datetime import date, timedelta
 
+from django.db.models import Q
+
 from common.periods import make_period
 
 from .models import ManufacturingRecord
 
 DUE_SOON_DAYS = 14  # 납기 임박: 오늘부터 14일 안 (제안)
+SEARCH_LIMIT = 50  # 캘린더 검색 결과 최대 수주 묶음 수
 OVERDUE_LOOKBACK_DAYS = 30  # 납기 지남·미출고는 최근 30일 것만 (오래된 행에 출고일이 비어 있어도 목록이 넘치지 않게)
 
 
@@ -79,3 +82,25 @@ def due_soon(today=None):
         if order["status"] != "done"
     ]
     return {"days": DUE_SOON_DAYS, "items": items}
+
+
+def search_due(query, today=None):
+    """캘린더 검색: 수주번호(# 없이도)·판매처·사업명·일련번호·거래처 주문번호에 검색어가 들어 있는 납기 묶음.
+    모든 달에서 찾고, 최근 납기일부터 최대 50건. 일련번호로 찾아도 그 수주 묶음 전체(대수·출고)를 보여준다."""
+    today = today or date.today()
+    q = (query or "").strip()
+    po = q.lstrip("#")
+    matched = ManufacturingRecord.objects.exclude(due_date=None).filter(
+        Q(po_no__icontains=po) | Q(customer__icontains=q) | Q(project_name__icontains=q)
+        | Q(serial_full__icontains=q) | Q(customer_order_no__icontains=q)
+    )
+    keys = set(matched.values_list("due_date", "po_no"))
+    total = len(keys)
+    keys = set(sorted(keys, key=lambda k: (k[0], k[1]), reverse=True)[:SEARCH_LIMIT])
+    records = ManufacturingRecord.objects.filter(due_date__in={d for d, _ in keys}).order_by("due_date", "po_no", "serial_full")
+    records = [r for r in records if (r.due_date, r.po_no) in keys]
+    results = [
+        {**order, "due_date": due_date, "d_day": (due_date - today).days}
+        for due_date, order in reversed(group_orders(records, today))
+    ]
+    return {"query": q, "total": total, "limit": SEARCH_LIMIT, "results": results}

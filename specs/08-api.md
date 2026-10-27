@@ -49,6 +49,7 @@
 | GET | `/api/production/dashboard/` | 생산량 달성률·부족치, 산업 분야·거래처·제품별 판매량 | 생산 열람 |
 | GET | `/api/production/serials/?q=0001` | 일련번호 검색 (4자리·전체) | 생산 열람 |
 | GET | `/api/production/serials/{serial_full}/` | 일련번호 11개 항목 상세 | 생산 열람 |
+| GET | `/api/production/due-calendar/search/?q=` | 납기 캘린더 검색: 수주번호·판매처·사업명·일련번호·거래처 주문번호, 모든 달, 최근 납기부터 최대 50건(`total`로 전체 건수). 검색어가 비면 400 | 생산 열람 |
 | GET | `/api/production/due-soon/` | 납기 임박: 출고가 끝나지 않은 수주 중 오늘부터 14일 안 + 납기 지남(최근 30일). 항목마다 `d_day`, `status`, `shipped`/`quantity` | 생산 열람 |
 | GET | `/api/production/due-calendar/?year=2026&month=10` | 당월 납기 캘린더 | 생산 열람 |
 
@@ -92,3 +93,4 @@
 - 2026-10-26: 업로드 종류 `quote_pdf`(견적서 → 부품 단가) 추가. 확인 화면 열 정보에 `suggestions`(직접 입력하며 고르는 추천 목록) 추가. 부품 단가 응답에 출처(`current_source`, `history[].source`)와 견적 정보(`history[].company`·`project`·`note`) 추가
 - 2026-10-27: `GET /api/production/due-soon/` 추가. 납기 캘린더 수주 묶음에 `shipped`(출고 대수), `status`(done/partial/pending), `overdue` 추가
 - 2026-10-27: `GET /api/periods/years/` 추가(기간 선택 연도 목록을 데이터에 맞춤)
+- 2026-10-27: `GET /api/production/due-calendar/search/` 추가

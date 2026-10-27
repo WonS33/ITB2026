@@ -225,6 +225,42 @@ class DueStatusTests(APITestCase):
         self.assertEqual(self.client.get("/api/production/due-soon/").status_code, 403)
 
 
+class DueSearchTests(APITestCase):
+    """납기 캘린더 검색: 모든 달에서 수주번호·판매처·사업명·일련번호로 찾기"""
+
+    def setUp(self):
+        self.client.force_authenticate(User.objects.create_user("viewer", password="x", role=User.Role.MEMBER,
+                                                                view_teams=[P]))
+        rows = [  # (일련번호, 납기일, 수주번호, 판매처, 사업명, 출고일)
+            ("N82260001", date(2026, 3, 5), "26010", "가람상수도", "가상 정수장 사업", date(2026, 3, 3)),
+            ("N82260002", date(2026, 3, 5), "26010", "가람상수도", "가상 정수장 사업", None),
+            ("N82260003", date(2026, 11, 2), "26020", "나래발전", "가상 발전 사업", None),
+            ("N82250004", date(2025, 7, 1), "25030", "가람상수도", "가상 배관 사업", date(2025, 6, 28)),
+        ]
+        for serial, due, po, customer, project, shipped in rows:
+            ManufacturingRecord.objects.create(serial_full=serial, serial_short=serial[-4:], due_date=due, po_no=po,
+                                               customer=customer, project_name=project, shipped_date=shipped)
+
+    def search(self, q):
+        return self.client.get("/api/production/due-calendar/search/", {"q": q})
+
+    def test_search_by_customer_across_months_recent_first(self):
+        res = self.search("가람")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual([(r["due_date"], r["po_no"]) for r in res.data["results"]],
+                         [(date(2026, 3, 5), "26010"), (date(2025, 7, 1), "25030")])
+
+    def test_search_by_po_with_hash_and_serial_shows_whole_order(self):
+        self.assertEqual([r["po_no"] for r in self.search("#26020").data["results"]], ["26020"])
+        order = self.search("N82260002").data["results"][0]  # 일련번호 하나로 찾아도 수주 묶음 전체
+        self.assertEqual((order["po_no"], order["quantity"], order["shipped"], order["status"]), ("26010", 2, 1, "partial"))
+
+    def test_search_by_project_and_empty_query(self):
+        self.assertEqual([r["po_no"] for r in self.search("발전 사업").data["results"]], ["26020"])
+        self.assertEqual(self.search("없는검색어").data["results"], [])
+        self.assertEqual(self.search(" # ").status_code, 400)
+
+
 class SalesSummaryTests(APITestCase):
     """specs/09-metrics.md 3절 판매량 (기준 날짜: 수주서 납기일)"""
 

@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
-from .due_calendar import due_calendar, due_soon
+from .due_calendar import due_calendar, due_soon, search_due
 from .metrics import production_summary, sales_summary
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
@@ -93,6 +93,16 @@ class DueCalendarView(ProductionApiView):
     def get(self, request):
         period = period_from_params({**request.query_params.dict(), "period": "month"})
         return Response(due_calendar(period.year, period.months[0]))
+
+
+class DueSearchView(ProductionApiView):
+    """GET /api/production/due-calendar/search/?q=검색어 — 모든 달에서 수주번호·판매처·사업명·일련번호로 납기 찾기"""
+
+    def get(self, request):
+        q = (request.query_params.get("q") or "").strip()
+        if not q.lstrip("#"):
+            raise ValidationError({"q": "검색어를 입력해 주세요."})
+        return Response(search_due(q))
 
 
 class DueSoonView(ProductionApiView):

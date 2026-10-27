@@ -10,3 +10,5 @@ export const getSerial = (serialFull) => apiFetch(`/production/serials/${encodeU
 export const getDueCalendar = (year, month) => apiFetch(`/production/due-calendar/?year=${year}&month=${month}`)
 // 납기 임박 (오늘 기준: 14일 안 + 납기 지남, 출고가 끝나지 않은 수주)
 export const getDueSoon = () => apiFetch('/production/due-soon/')
+// 납기 캘린더 검색 (모든 달: 수주번호·판매처·사업명·일련번호·거래처 주문번호)
+export const searchDue = (q) => apiFetch(`/production/due-calendar/search/?q=${encodeURIComponent(q)}`)
