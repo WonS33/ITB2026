@@ -6,7 +6,7 @@ from rest_framework.views import APIView
 from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
-from .due_calendar import due_calendar
+from .due_calendar import due_calendar, due_soon
 from .metrics import production_summary, sales_summary
 from .models import AnnualProductionTarget, ManufacturingRecord
 from .serializers import ProductionTargetInputSerializer
@@ -93,3 +93,10 @@ class DueCalendarView(ProductionApiView):
     def get(self, request):
         period = period_from_params({**request.query_params.dict(), "period": "month"})
         return Response(due_calendar(period.year, period.months[0]))
+
+
+class DueSoonView(ProductionApiView):
+    """GET /api/production/due-soon/ — 납기 임박(오늘부터 14일 안) + 납기 지남(최근 30일) 중 출고가 끝나지 않은 수주"""
+
+    def get(self, request):
+        return Response(due_soon())

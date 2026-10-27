@@ -1,0 +1,20 @@
+/* 납기 처리 상태 색 (dueStatus.js와 함께 씀)
+   앞으로 처리할 건은 진하게, 이미 처리 완료된 건은 흐리게 → 남은 일이 한눈에 보이게 */
+.due-overdue {
+  background: #d63b3b;
+  color: #fff;
+}
+.due-pending {
+  background: #2a78d6;
+  color: #fff;
+}
+.due-partial {
+  background: #fff4d6;
+  color: #7a5200;
+  border: 1px solid #eda100;
+}
+.due-done {
+  background: #eef0f3;
+  color: #6b7280;
+  border: 1px solid #dfe3e8;
+}

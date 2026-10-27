@@ -181,6 +181,50 @@ class DueCalendarTests(APITestCase):
         self.assertEqual(self.client.get("/api/production/due-calendar/").status_code, 403)
 
 
+class DueStatusTests(APITestCase):
+    """납기 처리 상태(출고일 기준)와 메인 대시보드 납기 임박 목록"""
+
+    TODAY = date(2026, 10, 27)
+
+    def setUp(self):
+        self.client.force_authenticate(User.objects.create_user("viewer", password="x", role=User.Role.MEMBER,
+                                                                view_teams=[P]))
+        rows = [  # (납기일, 수주번호, 출고일)
+            (date(2026, 10, 10), "26001", date(2026, 10, 8)),                       # 완료
+            (date(2026, 10, 20), "26002", None),                                    # 납기 지남·미출고
+            (date(2026, 10, 27), "26003", date(2026, 10, 25)), (date(2026, 10, 27), "26003", None),  # 오늘 납기, 일부 출고
+            (date(2026, 11, 5), "26004", None), (date(2026, 11, 5), "26004", None),  # D-9, 출고 전
+            (date(2026, 11, 20), "26005", None),                                    # 14일 넘음 → 임박 목록 제외
+            (date(2026, 9, 1), "26000", None),                                      # 30일 넘게 지남 → 제외
+        ]
+        for i, (due, po, shipped) in enumerate(rows, start=1):
+            ManufacturingRecord.objects.create(serial_full=f"N8226{i:04d}", serial_short=f"{i:04d}", due_date=due,
+                                               po_no=po, customer="가상", shipped_date=shipped)
+
+    def test_calendar_status(self):
+        from .due_calendar import due_calendar
+
+        days = {d["date"]: d["orders"][0] for d in due_calendar(2026, 10, today=self.TODAY)["days"]}
+        self.assertEqual((days["2026-10-10"]["status"], days["2026-10-10"]["overdue"]), ("done", False))
+        self.assertEqual((days["2026-10-20"]["status"], days["2026-10-20"]["overdue"]), ("pending", True))
+        self.assertEqual((days["2026-10-27"]["status"], days["2026-10-27"]["shipped"], days["2026-10-27"]["overdue"]),
+                         ("partial", 1, False))  # 오늘 납기는 아직 지나지 않음
+
+    def test_due_soon(self):
+        from .due_calendar import due_soon
+
+        items = due_soon(today=self.TODAY)["items"]
+        self.assertEqual([(i["po_no"], i["d_day"], i["status"]) for i in items],
+                         [("26002", -7, "pending"), ("26003", 0, "partial"), ("26004", 9, "pending")])
+        self.assertEqual(items[2]["quantity"], 2)
+
+    def test_due_soon_api(self):
+        res = self.client.get("/api/production/due-soon/")
+        self.assertEqual((res.status_code, res.data["days"]), (200, 14))
+        self.client.force_authenticate(User.objects.create_user("svc", password="x", view_teams=[S]))
+        self.assertEqual(self.client.get("/api/production/due-soon/").status_code, 403)
+
+
 class SalesSummaryTests(APITestCase):
     """specs/09-metrics.md 3절 판매량 (기준 날짜: 수주서 납기일)"""
 

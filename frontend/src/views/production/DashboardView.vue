@@ -1,7 +1,8 @@
 <script setup>
-// 생산팀 대시보드: 생산 실적(목표 대비) + 판매 실적
+// 생산팀 대시보드: 납기 임박(오늘 기준) + 생산 실적(목표 대비) + 판매 실적
 import { ref, watch } from 'vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
+import DueSoon from '@/components/production/DueSoon.vue'
 import SalesSection from '@/components/production/SalesSection.vue'
 import StatCard from '@/components/StatCard.vue'
 import TargetForm from '@/components/production/TargetForm.vue'
@@ -26,6 +27,8 @@ watch(period, load, { deep: true, immediate: true })
 
 <template>
   <div>
+    <!-- 납기 임박은 기간 선택과 관계없이 오늘 기준이라 기간 선택보다 위에 둔다 -->
+    <DueSoon />
     <PeriodSelector />
 
     <div v-if="error" class="alert alert-danger">{{ error }}</div>

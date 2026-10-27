@@ -42,6 +42,11 @@ class Command(BaseCommand):
                 last_day = today.day if (year, month) == (today.year, today.month) else 28
                 made = date(year, month, rng.randint(1, last_day))
                 due = made + timedelta(days=rng.randint(5, 20))
+                # 출고일: 납기 2일 전. 아직 오지 않은 날은 출고 전(빈 값)으로 두고,
+                # 최근 1주일 안의 납기는 일부를 출고 전으로 남겨 "납기 지남·미출고"를 시연할 수 있게 한다
+                shipped = due - timedelta(days=2)
+                late = due >= today - timedelta(days=7) and rng.random() < 0.4
+                shipped = None if shipped > today or late else shipped
                 short = f"{seq:04d}"
                 records.append(
                     ManufacturingRecord(
@@ -55,7 +60,7 @@ class Command(BaseCommand):
                         customer=rng.choice(CUSTOMERS),
                         project_name="가상 사업",
                         due_date=due,
-                        shipped_date=due - timedelta(days=2),
+                        shipped_date=shipped,
                         source_sheet=VIRTUAL_SHEET,
                     )
                 )

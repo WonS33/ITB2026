@@ -8,4 +8,5 @@ urlpatterns = [
     path("serials/", views.SerialSearchView.as_view()),
     path("serials/<str:serial_full>/", views.SerialDetailView.as_view()),
     path("due-calendar/", views.DueCalendarView.as_view()),
+    path("due-soon/", views.DueSoonView.as_view()),
 ]
