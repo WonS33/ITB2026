@@ -4,6 +4,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { createTripReport, getPartPrices, getRequesterRegions } from '@/api/service'
+import { refreshYearRange } from '@/period'
 
 const PAID_TYPES = ['유상', '무상']
 
@@ -76,6 +77,7 @@ async function submit() {
   try {
     const report = await createTripReport({ ...form, allow_duplicate: duplicate.value ? allowDuplicate.value : false })
     saved.value = report
+    refreshYearRange() // 이전 연도 보고서를 입력했으면 기간 선택 연도 목록에 반영
     Object.assign(form, emptyForm())
     duplicate.value = null
     allowDuplicate.value = false

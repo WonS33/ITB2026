@@ -1,9 +1,10 @@
 <script setup>
 // 기간 선택 영역: 연도 선택 + [당월 / 분기 / 연간] 전환 + (당월) 월 선택 / (분기) 1~4분기 선택
-import { period, PERIOD_KINDS } from '@/period'
+import { onMounted } from 'vue'
+import { loadYearRange, period, PERIOD_KINDS, yearOptions as years } from '@/period'
 
-const thisYear = new Date().getFullYear()
-const years = Array.from({ length: 5 }, (_, i) => thisYear - 3 + i) // 3년 전 ~ 내년
+// 연도 목록은 데이터에 맞춘다: 가장 이른 데이터 연도(없으면 3년 전) ~ 내년
+onMounted(loadYearRange)
 const months = Array.from({ length: 12 }, (_, i) => i + 1)
 </script>
 

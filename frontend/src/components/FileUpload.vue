@@ -3,6 +3,7 @@
 import { ref } from 'vue'
 import UploadReview from '@/components/UploadReview.vue'
 import { uploadFile } from '@/api/uploads'
+import { refreshYearRange } from '@/period'
 
 const props = defineProps({
   kind: { type: String, required: true }, // 예: manufacturing_excel
@@ -44,6 +45,7 @@ function finish(text) {
 
 function onSaved(result) {
   finish(`${result.saved_count}행을 저장했습니다.`)
+  refreshYearRange() // 이전 연도 자료를 올렸으면 기간 선택의 연도 목록에 바로 나타나게
   emit('saved')
 }
 </script>

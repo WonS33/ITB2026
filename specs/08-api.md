@@ -10,6 +10,10 @@
 - 권한이 없으면 `403`, 로그인하지 않았으면 `401`을 돌려준다.
 - 권한 표기: **전체** = 대표·관리자·경영지원팀 소속(팀장·팀원) / **생산 열람·수정**, **서비스 열람·수정** = 해당 팀 권한자 + 전체
 
+| 메서드 | 주소 | 설명 | 권한 |
+|---|---|---|---|
+| GET | `/api/periods/years/` | 기간 선택 연도 범위: `earliest_year`(가장 이른 데이터 연도, 없으면 null), `current_year` | 로그인 |
+
 ## 1. 계정
 
 | 메서드 | 주소 | 기능 | 권한 |
@@ -87,3 +91,4 @@
 - 2026-10-21: `POST /api/service/reports/`(출장보고서 직접 입력) 구현. 목록·상세 응답에 `input_method` 추가
 - 2026-10-26: 업로드 종류 `quote_pdf`(견적서 → 부품 단가) 추가. 확인 화면 열 정보에 `suggestions`(직접 입력하며 고르는 추천 목록) 추가. 부품 단가 응답에 출처(`current_source`, `history[].source`)와 견적 정보(`history[].company`·`project`·`note`) 추가
 - 2026-10-27: `GET /api/production/due-soon/` 추가. 납기 캘린더 수주 묶음에 `shipped`(출고 대수), `status`(done/partial/pending), `overdue` 추가
+- 2026-10-27: `GET /api/periods/years/` 추가(기간 선택 연도 목록을 데이터에 맞춤)

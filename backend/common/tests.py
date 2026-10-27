@@ -2,6 +2,7 @@ from datetime import date
 
 from django.test import SimpleTestCase
 from rest_framework.exceptions import ValidationError
+from rest_framework.test import APITestCase
 
 from .periods import period_from_params, quarter_of
 
@@ -43,3 +44,25 @@ class PeriodTests(SimpleTestCase):
         for params in ({"period": "week"}, {"month": "13"}, {"quarter": "0"}, {"year": "abc"}):
             with self.subTest(params=params), self.assertRaises(ValidationError):
                 period_from_params(params, TODAY)
+
+
+class PeriodYearsTests(APITestCase):
+    """기간 선택 연도 범위: 가장 이른 데이터 연도 (2023년 이전 자료도 볼 수 있게)"""
+
+    def test_earliest_year_follows_data(self):
+        from datetime import date
+
+        from accounts.models import User
+        from production.models import ManufacturingRecord
+        from service.models import TripReport
+
+        self.client.force_authenticate(User.objects.create_user("u", password="x", view_teams=["service"]))
+        self.assertIsNone(self.client.get("/api/periods/years/").data["earliest_year"])  # 데이터 없음
+        ManufacturingRecord.objects.create(serial_full="N82190001", serial_short="0001", manufactured_date=date(2019, 5, 1))
+        TripReport.objects.create(start_date=date(2021, 3, 2), requester="가상", region="서울특별시", paid_type="유상",
+                                  author="가상")
+        res = self.client.get("/api/periods/years/")
+        self.assertEqual((res.status_code, res.data["earliest_year"]), (200, 2019))
+
+    def test_login_required(self):
+        self.assertEqual(self.client.get("/api/periods/years/").status_code, 401)
