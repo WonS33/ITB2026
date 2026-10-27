@@ -18,7 +18,7 @@ class UploadHandler:
     kind = ""
     team = ""  # 이 업로드를 할 수 있는 팀 (수정 권한 확인용)
     allowed_extensions = ()
-    columns = []  # 확인 화면 표의 열: [(key, label), ...] 또는 (key, label, {"choices": [...], "multiline": True})
+    columns = []  # 확인 화면 표의 열: [(key, label), ...] 또는 (key, label, {"choices": [...], "multiline": True, "suggestions": 이름})
     key_field = ""  # 중복 확인 기준 번호가 들어 있는 열
     # True: 중복으로 잡힌 행을 사람이 "중복 아님"으로 확인하면 저장할 수 있다.
     # 기준이 고유 번호가 아닌 종류만 켠다 (예: 출장보고서 = 시작일+요청처). 일련번호·판매번호는 끈다.
@@ -43,6 +43,10 @@ class UploadHandler:
     def save(self, rows, user):
         """오류·중복·제외가 아닌 행(rows)을 DB에 저장하고 저장한 개수를 돌려준다."""
         raise NotImplementedError
+
+    def suggestions(self):
+        """확인 화면의 추천 목록 {이름: [값, ...]} — 열 옵션 {"suggestions": 이름}이 있는 종류만 다시 정의"""
+        return {}
 
 
 def check_rows(handler, rows):
@@ -75,10 +79,16 @@ def check_rows(handler, rows):
 
 def column_specs(handler):
     """확인 화면에 보낼 열 정보. choices가 있으면 선택 목록, multiline이면 여러 줄 입력으로 보여준다.
-    choices_by가 있으면 같은 행의 다른 칸 값에 따라 choices_map[그 값] 목록을 보여준다 (예: 시·도 → 시·군)."""
+    choices_by가 있으면 같은 행의 다른 칸 값에 따라 choices_map[그 값] 목록을 보여준다 (예: 시·도 → 시·군).
+    suggestions가 있으면 직접 입력하면서 고를 수 있는 추천 목록을 붙인다 (예: 견적서 품명 → 부품명)."""
     specs = []
+    lists = None
     for key, label, *options in handler.columns:
-        specs.append({"key": key, "label": label, **(options[0] if options else {})})
+        spec = {"key": key, "label": label, **(options[0] if options else {})}
+        if "suggestions" in spec:
+            lists = handler.suggestions() if lists is None else lists
+            spec["suggestions"] = lists.get(spec["suggestions"], [])
+        specs.append(spec)
     return specs
 
 

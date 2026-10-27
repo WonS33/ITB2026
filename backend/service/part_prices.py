@@ -4,6 +4,7 @@
 - 직전 단가 = 현재 단가 바로 앞의 단가
 - 증감 = 현재 단가 - 직전 단가, 증감률(%) = 증감 ÷ 직전 단가 × 100 (소수 첫째 자리)
 - 단가 미등록 부품 = 출장보고서에 나왔지만 단가가 하나도 없는 부품
+- 출처: 직접 입력 또는 견적서(견적 번호)
 - 부품 비용 합계(사용 횟수 × 단가)는 보고서에 수량이 없어 계산하지 않는다 (기업 확인 전)
 """
 
@@ -13,6 +14,13 @@ from datetime import date
 from django.db.models import Count
 
 from .models import PartPrice, TripReportPart
+
+
+def source_label(price):
+    """단가 출처 표시: '견적서 NTK-…' 또는 '직접 입력'"""
+    if price.source == PartPrice.Source.QUOTE:
+        return f"견적서 {price.quote_no}".strip()
+    return price.get_source_display()
 
 
 def part_price_table(today=None):
@@ -37,8 +45,12 @@ def part_price_table(today=None):
             "previous_price": previous.unit_price if previous else None,
             "change": change,
             "change_rate": round(change / previous.unit_price * 100, 1) if change is not None and previous.unit_price else None,
+            "current_source": source_label(current) if current else None,
             "history": [
-                {"id": p.id, "unit_price": p.unit_price, "effective_date": p.effective_date, "upcoming": p.effective_date > today}
+                {"id": p.id, "unit_price": p.unit_price, "effective_date": p.effective_date, "upcoming": p.effective_date > today,
+                 "source": source_label(p),
+                 # 견적 단가가 달라진 이유를 참고하는 정보 (견적서로 넣은 단가만)
+                 "company": p.quote_company, "project": p.quote_project, "note": p.quote_note}
                 for p in prices
             ],
         })

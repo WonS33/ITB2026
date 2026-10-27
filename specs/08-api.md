@@ -58,6 +58,7 @@
 | GET | `/api/service/part-prices/` | 부품별 현재·직전 단가, 증감, 이력, 단가 미등록 부품, 부품명 목록 | 서비스 열람 |
 | POST | `/api/service/part-prices/` | 단가 한 줄 추가 (`part_name`, `unit_price`, `effective_date`) | 서비스 수정 |
 | DELETE | `/api/service/part-prices/{id}/` | 잘못 입력한 단가 한 줄 삭제 | 서비스 수정 |
+| (업로드) | `POST /api/uploads/` `kind=quote_pdf` | 유상 A/S 견적서 PDF → 부품 단가 (업로드 공통 흐름: 확인 → 저장) | 서비스 수정 |
 | GET | `/api/service/requester-regions/` | 요청처 → 시·도·시·군 대응표 (보고서 수 포함), 시·도·시·군 목록 | 서비스 열람 |
 | PATCH | `/api/service/requester-regions/{id}/` | 시·도·시·군 변경 → 같은 요청처의 저장된 출장보고서 지역도 함께 변경 | 서비스 수정 |
 
@@ -83,3 +84,4 @@
 - 2026-10-19: `role`에서 `management` 삭제, 팀 값에 `management` 추가. `GET /api/auth/me/`의 `view_teams`·`edit_teams`는 전체 권한자면 `["management","production","service"]`
 - 2026-10-21: 서비스팀 부품 단가(조회·추가·삭제)와 요청처 지역 관리(조회·변경) API 구현
 - 2026-10-21: `POST /api/service/reports/`(출장보고서 직접 입력) 구현. 목록·상세 응답에 `input_method` 추가
+- 2026-10-26: 업로드 종류 `quote_pdf`(견적서 → 부품 단가) 추가. 확인 화면 열 정보에 `suggestions`(직접 입력하며 고르는 추천 목록) 추가. 부품 단가 응답에 출처(`current_source`, `history[].source`)와 견적 정보(`history[].company`·`project`·`note`) 추가

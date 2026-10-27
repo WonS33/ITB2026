@@ -436,3 +436,136 @@ class OverrideNotAllowedForUniqueNumbersTests(APITestCase):
         res = self.client.patch(f"/api/uploads/{again.data['id']}/", {"rows": changes}, format="json")
         self.assertEqual(res.data["summary"]["duplicate_rows"], 2)
         self.assertEqual(self.client.post(f"/api/uploads/{again.data['id']}/confirm/").data["saved_count"], 0)
+
+
+# ---------------------------------------------------------------- 유상 A/S 견적서 PDF → 부품 단가
+from service.models import PartPrice, QuotePartAlias
+
+from .handlers.quote_pdf import bottom_note, read_items, value_right_of
+
+QUOTE_SAMPLE_PDF = os.path.join(settings.BASE_DIR.parent, "samples", "유상AS 견적서 샘플.pdf")
+
+
+def quote_rows(*items, quote_no="NTK-991231-0001", day="2026-09-01"):
+    """가상 견적서 행. items: (견적서 품명, 단가, 수량, 금액, 부품명)"""
+    return [{"row_no": i, "sheet": "1쪽", "values": {
+        "quote_no": quote_no, "effective_date": day, "quote_item": item, "part_name": part,
+        "unit_price": f"{price:,}", "quantity": str(qty), "amount": f"{amount:,}",
+        "quote_company": "가상산업", "quote_project": "가상 밸브 점검", "quote_note": "원거리 출장"}}
+        for i, (item, price, qty, amount, part) in enumerate(items, start=1)]
+
+
+class QuotePdfLayoutTests(APITestCase):
+    """양식 읽기: 항목 이름 오른쪽 값, 가운데 정렬 머리글 표 (가상 글자 위치)"""
+
+    def page(self):
+        w = lambda text, x0, x1, top: Word(text, x0, x1, top, top + 8)
+        return FormPage([
+            w("견적 번호", 62, 96, 120), w("NTK-991231-0001", 114, 192, 120), w("등록번호", 325, 353, 120),
+            w("날       짜", 63, 96, 143), w("2026-09-01", 114, 164, 143),
+            w("업  체  명", 63, 96, 165), w("가상산업", 114, 150, 165), w("주      소", 325, 352, 166),
+            w("가상시 가상로 1", 366, 450, 166),
+            w("사  업   명", 62, 97, 243), w("가상 정수장", 114, 170, 243), w("밸브 점검", 175, 210, 243),
+            w("비       고", 63, 96, 266), w("야간 작업", 114, 160, 266),
+            w("번호", 55, 70, 329), w("품명 및 규격", 208, 252, 329), w("수량", 390, 406, 329),
+            w("단가(원)", 433, 463, 329), w("금액(원)", 501, 531, 329),
+            w("1", 61, 65, 350), w("XX-01 가상 모터", 81, 205, 350), w("2", 396, 400, 350),
+            w("100,000", 441, 476, 350), w("200,000", 509, 543, 350),
+            w("2", 61, 65, 371), w("가상 보드 Assy", 81, 160, 371), w("1", 396, 400, 371),
+            w("50,000", 445, 476, 371), w("50,000", 513, 543, 371),
+            w("(두 번째 줄)", 81, 140, 381),  # 품명이 다음 줄로 넘어간 경우
+            w("납       기", 63, 96, 604), w("공급가액", 433, 464, 604), w("250,000", 509, 543, 604),
+            w("비", 58, 66, 703), w("원거리 출장", 140, 200, 700), w("고", 58, 66, 726), w("장비 추가", 140, 190, 715),
+            w("『 가상 인증 문구 』", 107, 487, 764),
+        ], 595, 842)
+
+    def test_read_header_and_items(self):
+        page = self.page()
+        self.assertEqual(value_right_of(page, "견적번호"), "NTK-991231-0001")
+        self.assertEqual(value_right_of(page, "날짜"), "2026-09-01")
+        self.assertEqual(value_right_of(page, "업체명"), "가상산업")  # 오른쪽 '주소' 항목 전에서 멈춤
+        self.assertEqual(value_right_of(page, "사업명"), "가상 정수장 밸브 점검")  # 여러 조각을 이어 붙임
+        self.assertEqual(value_right_of(page, "비고"), "야간 작업")
+        self.assertEqual(bottom_note(page), "원거리 출장\n장비 추가")  # 아래쪽 비고 칸, 인증 문구는 제외
+        self.assertEqual(read_items(page), [
+            {"item": "XX-01 가상 모터", "quantity": "2", "unit_price": "100,000", "amount": "200,000"},
+            {"item": "가상 보드 Assy (두 번째 줄)", "quantity": "1", "unit_price": "50,000", "amount": "50,000"},
+        ])
+
+
+class QuoteUploadTests(APITestCase):
+    def setUp(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "svc_leader", password="x", role=User.Role.LEADER, view_teams=[S], edit_teams=[S]))
+
+    def upload(self, rows):
+        with mock.patch("uploads.handlers.quote_pdf.QuotePdfHandler.parse", return_value=(rows, 0)):
+            return self.client.post("/api/uploads/", {"kind": "quote_pdf",
+                                                      "file": SimpleUploadedFile("견적서.pdf", b"%PDF")}, format="multipart")
+
+    def test_save_price_and_remember_part_name(self):
+        res = self.upload(quote_rows(("XX-01 가상 모터", 100000, 2, 200000, "Motor")))
+        part_col = next(c for c in res.data["columns"] if c["key"] == "part_name")
+        self.assertIsInstance(part_col["suggestions"], list)  # 직접 입력하면서 고르는 추천 목록
+        self.assertEqual(self.client.post(f"/api/uploads/{res.data['id']}/confirm/").data["saved_count"], 1)
+        price = PartPrice.objects.get()
+        self.assertEqual((price.part_name, price.unit_price, price.effective_date, price.source, price.quote_no),
+                         ("Motor", 100000, date(2026, 9, 1), "quote", "NTK-991231-0001"))
+        self.assertEqual(QuotePartAlias.objects.get(quote_item="XX-01 가상 모터").part_name, "Motor")
+        # 단가 화면에 출처와 함께 업체·사업명·비고 표시 (단가가 달라진 이유 참고)
+        history = self.client.get("/api/service/part-prices/").data["parts"][0]["history"][0]
+        self.assertEqual((history["source"], history["company"], history["project"], history["note"]),
+                         ("견적서 NTK-991231-0001", "가상산업", "가상 밸브 점검", "원거리 출장"))
+
+    def test_same_quote_twice_is_skipped(self):
+        res = self.upload(quote_rows(("XX-01 가상 모터", 100000, 1, 100000, "Motor")))
+        self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
+        again = self.upload(quote_rows(("XX-01 가상 모터", 100000, 1, 100000, "Motor")))
+        self.assertEqual(again.data["summary"]["duplicate_rows"], 1)
+        self.assertFalse(again.data["allow_duplicate_override"])  # 견적 번호가 기준이라 '중복 아님' 없음
+
+    def test_validation(self):
+        PartPrice.objects.create(part_name="Main Board", unit_price=1, effective_date=date(2026, 9, 1))
+        res = self.upload(quote_rows(
+            ("가상 품명A", 100000, 2, 150000, "Motor"),       # 수량 × 단가 ≠ 금액
+            ("가상 품명B", 50000, 1, 50000, ""),               # 부품명 없음
+            ("가상 품명C", 70000, 1, 70000, "Main Board"),     # 같은 날짜 단가가 이미 있음
+            ("가상 품명D", 80000, 1, 80000, "Motor"),          # 파일 안에서 Motor·같은 날짜가 두 번
+        ))
+        errors = [r["errors"] for r in res.data["rows"]]
+        self.assertIn("amount", errors[0])
+        self.assertIn("part_name", errors[1])
+        self.assertIn("이미 있습니다", errors[2]["part_name"])
+        self.assertIn("1번째 줄", errors[3]["part_name"])
+
+    def test_alias_fills_part_name_on_next_upload(self):
+        QuotePartAlias.objects.create(quote_item="XX-01 가상 모터", part_name="Motor")
+        handler = HANDLERS["quote_pdf"]
+        with mock.patch("uploads.handlers.quote_pdf.read_pages", return_value=[QuotePdfLayoutTests().page()]):
+            rows, _ = handler.parse(None)
+        self.assertEqual([r["values"]["part_name"] for r in rows], ["Motor", ""])
+        self.assertEqual(rows[0]["values"]["quote_note"], "야간 작업\n원거리 출장\n장비 추가")  # 비고 두 칸을 합침
+
+    def test_member_cannot_upload(self):
+        self.client.force_authenticate(User.objects.create_user(
+            "svc_member", password="x", role=User.Role.MEMBER, view_teams=[S]))
+        self.assertEqual(self.upload(quote_rows(("가상", 1, 1, 1, "Motor"))).status_code, 403)
+
+
+@unittest.skipUnless(os.path.exists(QUOTE_SAMPLE_PDF), "실제 견적서 샘플이 없는 PC에서는 건너뜀 (samples/는 Git 제외)")
+class RealSampleQuoteTests(APITestCase):
+    """실제 샘플 읽기 확인. 실제 기업 값은 코드에 적지 않고 형식만 확인한다 (CLAUDE.md 7절)."""
+
+    def test_parse_real_sample(self):
+        handler = HANDLERS["quote_pdf"]
+        with open(QUOTE_SAMPLE_PDF, "rb") as f:
+            rows, _ = handler.parse(f)
+        self.assertGreaterEqual(len(rows), 1)
+        for row in rows:
+            v = row["values"]
+            self.assertRegex(v["quote_no"], r"^NTK-\d{6}-\d{4}$")
+            self.assertRegex(v["effective_date"], r"^\d{4}-\d{2}-\d{2}$")
+            self.assertTrue(v["quote_item"])
+            self.assertTrue(v["quote_company"] and v["quote_project"])  # 업체명·사업명 읽힘
+            # 부품명만 고르면 오류 없음 (수량 × 단가 = 금액 확인 포함)
+            self.assertEqual(handler.validate({**v, "part_name": "가상 부품"}), {})

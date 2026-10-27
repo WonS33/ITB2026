@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import PartPrice, RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
+from .models import PartPrice, QuotePartAlias, RequesterRegion, TripReport, TripReportCompanion, TripReportPart, TripReportProduct
 
 
 class CompanionInline(admin.TabularInline):
@@ -33,5 +33,11 @@ class RequesterRegionAdmin(admin.ModelAdmin):
 
 @admin.register(PartPrice)
 class PartPriceAdmin(admin.ModelAdmin):
-    list_display = ("part_name", "unit_price", "effective_date")
-    search_fields = ("part_name",)
+    list_display = ("part_name", "unit_price", "effective_date", "source", "quote_no")
+    search_fields = ("part_name", "quote_no", "quote_item")
+
+
+@admin.register(QuotePartAlias)
+class QuotePartAliasAdmin(admin.ModelAdmin):
+    list_display = ("quote_item", "part_name")
+    search_fields = ("quote_item", "part_name")

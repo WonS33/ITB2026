@@ -1,4 +1,5 @@
 from .manufacturing_excel import ManufacturingExcelHandler
+from .quote_pdf import QuotePdfHandler
 from .sales_order_pdf import SalesOrderPdfHandler
 from .trip_report_pdf import TripReportPdfHandler
 
@@ -9,5 +10,6 @@ HANDLERS = {
         ManufacturingExcelHandler(),
         SalesOrderPdfHandler(),
         TripReportPdfHandler(),
+        QuotePdfHandler(),
     ]
 }

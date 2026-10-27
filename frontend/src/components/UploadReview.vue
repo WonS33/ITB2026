@@ -135,7 +135,7 @@ function rowClass(row) {
                   중복 아님 — 저장
                 </label>
               </td>
-              <td v-for="col in batch.columns" :key="col.key" :style="{ minWidth: col.multiline ? '16rem' : col.choices || col.choices_by ? '10rem' : '7rem' }">
+              <td v-for="col in batch.columns" :key="col.key" :style="{ minWidth: col.multiline ? '16rem' : col.choices || col.choices_by || col.suggestions ? '10rem' : '7rem' }">
                 <!-- 열 종류: 선택 목록(choices) / 다른 칸에 따라 바뀌는 선택 목록(choices_by) / 여러 줄(multiline) / 한 줄 입력 -->
                 <select
                   v-if="col.choices_by"
@@ -168,6 +168,7 @@ function rowClass(row) {
                   :disabled="drafts[row.id].excluded"
                   :aria-label="col.label"
                 ></textarea>
+                <!-- suggestions가 있으면 직접 입력하면서 추천 목록에서 고를 수 있다 (예: 부품명) -->
                 <input
                   v-else
                   v-model="drafts[row.id].values[col.key]"
@@ -175,12 +176,16 @@ function rowClass(row) {
                   :class="{ 'is-invalid': row.errors[col.key] }"
                   :disabled="drafts[row.id].excluded"
                   :aria-label="col.label"
+                  :list="col.suggestions ? `suggest-${col.key}` : undefined"
                 />
                 <div v-if="row.errors[col.key]" class="invalid-feedback d-block">{{ row.errors[col.key] }}</div>
               </td>
             </tr>
           </tbody>
         </table>
+        <datalist v-for="col in batch.columns.filter((c) => c.suggestions)" :id="`suggest-${col.key}`" :key="col.key">
+          <option v-for="name in col.suggestions" :key="name" :value="name" />
+        </datalist>
       </div>
 
       <div v-if="error" class="alert alert-danger py-2">{{ error }}</div>

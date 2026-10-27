@@ -31,6 +31,7 @@ const router = createRouter({
         { path: 'upload', component: () => import('@/views/service/TripUploadView.vue'), meta: { edit: true } },
         { path: 'reports/new', component: () => import('@/views/service/TripReportFormView.vue'), meta: { edit: true } },
         { path: 'part-prices/input', component: () => import('@/views/service/PartPriceInputView.vue'), meta: { edit: true } },
+        { path: 'upload/quotes', component: () => import('@/views/service/QuoteUploadView.vue'), meta: { edit: true } },
         { path: 'requester-regions', component: () => import('@/views/service/RequesterRegionsView.vue'), meta: { edit: true } },
       ],
     },

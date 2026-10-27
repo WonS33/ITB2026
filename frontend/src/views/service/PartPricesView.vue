@@ -63,7 +63,10 @@ onMounted(load)
                 <td>{{ p.part_name }}</td>
                 <td class="text-end">{{ p.usage_count }}회</td>
                 <td class="text-end fw-semibold">{{ won(p.current_price) }}</td>
-                <td>{{ p.current_since || '적용 전' }}</td>
+                <td>
+                  {{ p.current_since || '적용 전' }}
+                  <div v-if="p.current_source" class="text-muted" style="font-size: 0.75rem">{{ p.current_source }}</div>
+                </td>
                 <td class="text-end">{{ won(p.previous_price) }}</td>
                 <!-- 증감은 색만으로 구분하지 않고 +/- 기호를 함께 표시 -->
                 <td class="text-end" :class="p.change > 0 ? 'text-danger' : p.change < 0 ? 'text-primary' : ''">{{ changeText(p) }}</td>
@@ -80,7 +83,35 @@ onMounted(load)
       <div v-if="selectedPart" class="card mb-3"><div class="card-body">
         <h2 class="h6">{{ selectedPart.part_name }} 단가 이력</h2>
         <PriceHistoryChart :history="selectedPart.history" />
-        <p class="text-muted small mt-2 mb-0">점: 단가가 바뀐 날. 속이 빈 점은 아직 적용 전(예정)인 단가입니다.</p>
+        <p class="text-muted small mt-2">점: 단가가 바뀐 날. 속이 빈 점은 아직 적용 전(예정)인 단가입니다.</p>
+        <!-- 견적 단가는 출장 거리·작업 강도 등에 따라 달라질 수 있어, 방문한 회사·사업명·비고를 함께 보여준다 -->
+        <div class="table-responsive">
+          <table class="table table-sm small mb-0 align-top">
+            <thead>
+              <tr>
+                <th>적용 시작일</th>
+                <th class="text-end">단가</th>
+                <th>출처</th>
+                <th>업체(방문한 회사)</th>
+                <th>사업명</th>
+                <th>비고</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="h in [...selectedPart.history].reverse()" :key="h.id">
+                <td class="text-nowrap">
+                  {{ h.effective_date }} <span v-if="h.upcoming" class="badge bg-light text-dark border">예정</span>
+                </td>
+                <td class="text-end text-nowrap">{{ h.unit_price.toLocaleString() }}원</td>
+                <td class="text-nowrap text-muted">{{ h.source }}</td>
+                <td>{{ h.company || '-' }}</td>
+                <td>{{ h.project || '-' }}</td>
+                <td style="white-space: pre-line">{{ h.note || '-' }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="text-muted small mt-2 mb-0">견적서 단가는 출장 거리·작업 강도 등에 따라 달라질 수 있습니다. 업체·사업명·비고로 이유를 확인하세요.</p>
       </div></div>
 
       <div class="card mb-3"><div class="card-body">

@@ -157,6 +157,13 @@
 - `part_name`, `unit_price`(원 단위 정수), `effective_date`(적용 시작일)
 - 같은 부품·같은 적용 시작일은 한 줄만(unique). 단가가 바뀌면 새 적용 시작일로 한 줄을 더한다 → 기간별 변동
 - `part_name`은 TripReportPart.part_name과 같은 이름이어야 사용 내역과 연결된다(FK 없음)
+- `source`(출처: `manual` 직접 입력 / `quote` 견적서), `quote_no`(견적 번호), `quote_item`(견적서 품명 원문) — 견적서 업로드 중복 기준 = 견적 번호 + 견적서 품명
+- `quote_company`(업체명 = 방문한 회사), `quote_project`(사업명), `quote_note`(비고) — 견적 단가가 달라진 이유를 참고하는 정보
+
+### QuotePartAlias — 견적서 품명 → 부품명 대응표
+
+- `quote_item` (unique), `part_name`
+- 견적서 업로드 확인 화면에서 고른 부품명을 기억해 다음 견적서부터 자동으로 채운다
 
 ### RequesterRegion — 요청처 → 시·도·시·군 대응표
 
@@ -168,7 +175,7 @@
 
 | 필드 | 설명 |
 |---|---|
-| `kind` | `manufacturing_excel` / `sales_order_pdf` / `trip_report_pdf` / `trip_report_excel` / `history_excel` |
+| `kind` | `manufacturing_excel` / `sales_order_pdf` / `trip_report_pdf` / `quote_pdf` / `trip_report_excel` / `history_excel` |
 | `file_name` | 원본 파일 이름 |
 | `status` | `extracted`(확인 대기) / `saved`(저장 완료) / `cancelled` |
 | `extracted_data` | 추출 결과 (JSON, 확인·수정 단계에서 사용). `columns`, `rows`(행마다 values·errors·duplicate·excluded), `skipped_count` |
@@ -187,3 +194,4 @@
 - 2026-10-19: TripReport·RequesterRegion에 `district`(시·군) 추가
 - 2026-10-21: PartPrice 구현 — 단가 출처 확인 전이지만 웹 직접 입력으로 먼저 만듦(사용자 요청). 적용 시작일 이력 방식
 - 2026-10-21: TripReport에 `input_method`(입력 방식) 추가 — 직접 입력과 PDF 업로드를 구분
+- 2026-10-26: PartPrice에 `source`·`quote_no`·`quote_item`·`quote_company`·`quote_project`·`quote_note` 추가, QuotePartAlias 추가, UploadBatch.kind에 `quote_pdf` 추가

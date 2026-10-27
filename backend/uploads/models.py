@@ -15,6 +15,7 @@ class UploadBatch(TimeStampedModel):
         MANUFACTURING_EXCEL = "manufacturing_excel", "제조내역 엑셀"
         SALES_ORDER_PDF = "sales_order_pdf", "수주서 PDF"
         TRIP_REPORT_PDF = "trip_report_pdf", "출장보고서 PDF"
+        QUOTE_PDF = "quote_pdf", "견적서 PDF"
         TRIP_REPORT_EXCEL = "trip_report_excel", "출장보고서 엑셀"
         HISTORY_EXCEL = "history_excel", "과거 데이터 엑셀"
 

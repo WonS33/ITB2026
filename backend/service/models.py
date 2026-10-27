@@ -86,15 +86,27 @@ class RequesterRegion(models.Model):
 
 
 class PartPrice(TimeStampedModel):
-    """교체 부품 단가 (웹에서 직접 입력 — 단가 출처는 기업 확인 전, 2026-10-21 결정)
+    """교체 부품 단가 (웹 직접 입력 또는 유상 A/S 견적서 PDF 업로드)
 
     단가가 바뀌면 덮어쓰지 않고 새 적용 시작일로 한 줄을 더한다 → 기간별 변동을 볼 수 있다.
     부품명은 출장보고서에 실제로 나온 이름(TripReportPart.part_name)과 같아야 연결된다.
     """
 
+    class Source(models.TextChoices):
+        MANUAL = "manual", "직접 입력"
+        QUOTE = "quote", "견적서"
+
     part_name = models.CharField("부품명", max_length=100)
-    unit_price = models.PositiveIntegerField("단가(원)")
+    unit_price = models.PositiveIntegerField("단가(원)")  # 부가세 제외
     effective_date = models.DateField("적용 시작일")
+    # 출처 (2026-10-26 추가): 견적서 업로드로 넣은 단가는 견적 번호와 견적서의 품명 원문을 남긴다
+    source = models.CharField("출처", max_length=10, choices=Source.choices, default=Source.MANUAL)
+    quote_no = models.CharField("견적 번호", max_length=50, blank=True)
+    quote_item = models.CharField("견적서 품명", max_length=200, blank=True)
+    # 견적 단가는 출장 거리·작업 강도 등에 따라 달라질 수 있어, 이유를 참고할 수 있게 함께 남긴다 (2026-10-26)
+    quote_company = models.CharField("견적 업체명", max_length=100, blank=True)  # 방문한 회사 (견적서 '업체명')
+    quote_project = models.CharField("견적 사업명", max_length=200, blank=True)
+    quote_note = models.TextField("견적 비고", blank=True)
 
     class Meta:
         verbose_name = "부품 단가"
@@ -106,3 +118,18 @@ class PartPrice(TimeStampedModel):
 
     def __str__(self):
         return f"{self.part_name} {self.unit_price:,}원 ({self.effective_date}~)"
+
+
+class QuotePartAlias(models.Model):
+    """견적서 품명 → 부품명 대응표. 견적서 업로드 확인 화면에서 고른 부품명을 기억해 다음부터 자동으로 채운다.
+    예: 견적서 "XX-01 가상 모터 Assy" → 출장보고서 부품명 "Motor" (요청처 → 지역 대응표와 같은 방식)"""
+
+    quote_item = models.CharField("견적서 품명", max_length=200, unique=True)
+    part_name = models.CharField("부품명", max_length=100)
+
+    class Meta:
+        verbose_name = "견적서 품명 대응"
+        verbose_name_plural = verbose_name
+
+    def __str__(self):
+        return f"{self.quote_item} → {self.part_name}"

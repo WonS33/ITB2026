@@ -92,11 +92,12 @@ onMounted(load)
       <h2 class="h6">{{ form.part_name }} 단가 이력</h2>
       <p v-if="!history.length" class="text-muted small mb-0">아직 입력된 단가가 없습니다.</p>
       <table v-else class="table table-sm small mb-0 align-middle">
-        <thead><tr><th>적용 시작일</th><th class="text-end">단가</th><th></th></tr></thead>
+        <thead><tr><th>적용 시작일</th><th class="text-end">단가</th><th>출처</th><th></th></tr></thead>
         <tbody>
           <tr v-for="h in [...history].reverse()" :key="h.id">
             <td>{{ h.effective_date }} <span v-if="h.upcoming" class="badge bg-light text-dark border">예정</span></td>
             <td class="text-end">{{ h.unit_price.toLocaleString() }}원</td>
+            <td class="text-muted">{{ h.source }}</td>
             <td class="text-end">
               <button type="button" class="btn btn-outline-danger btn-sm py-0" @click="remove(h)">삭제</button>
             </td>
