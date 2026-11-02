@@ -15,10 +15,13 @@ if [ "$SEED_DEMO_DATA" = "True" ]; then
     python manage.py seed_users
     python manage.py seed_production
     python manage.py seed_service
-    python manage.py seed_part_prices
   else
     echo "이미 계정이 있어 가상 데이터 넣기를 건너뜁니다."
   fi
+  # 나중에 추가된 표(부품 단가표·제품 가격)는 이미 배포된 DB에도 가상 값이 들어가도록 매번 실행한다.
+  # 두 명령 모두 데이터가 이미 있으면 아무것도 하지 않는다 (사람이 넣은 값을 덮어쓰지 않음)
+  python manage.py seed_part_prices
+  python manage.py seed_product_prices
 fi
 
 # 3) 웹 서버 실행. gunicorn은 배포용 파이썬 웹 서버다 (runserver는 개발용이라 배포에 쓰지 않음)

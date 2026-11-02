@@ -15,3 +15,12 @@ export const deletePartPrice = (id) => apiFetch(`/service/part-prices/${id}/`, {
 // 요청처 → 시·도·시·군 대응표
 export const getRequesterRegions = () => apiFetch('/service/requester-regions/')
 export const updateRequesterRegion = (id, data) => apiFetch(`/service/requester-regions/${id}/`, { method: 'PATCH', body: data })
+
+// 부품 단가표: 파트넘버별 뉴토크 기준값 + 출장지(업체)별 평균·최저·최고·최고−최저
+export const getPartCatalog = (q = '', category = '') =>
+  apiFetch(`/service/part-catalog/?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`)
+export const getPartCatalogItem = (id) => apiFetch(`/service/part-catalog/${id}/`)
+// 부품별 할인율·추가단가 (null이면 전체 기본값 사용)
+export const setPartCatalogItem = (id, body) => apiFetch(`/service/part-catalog/${id}/`, { method: 'PATCH', body })
+export const getCatalogChoices = () => apiFetch('/service/part-catalog/choices/')
+export const setPriceStandard = (body) => apiFetch('/service/price-standard/', { method: 'PUT', body })

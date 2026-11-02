@@ -140,19 +140,24 @@ class PartPriceTests(APITestCase):
             view_teams=[S], edit_teams=[S] if edit else []))
 
     def test_add_and_delete_price(self):
+        from .models import PartCatalogItem
+
+        item = PartCatalogItem.objects.create(part_no="VX-05-A-01", name="Motor", list_price=500000)
         self.login(edit=True)
-        res = self.client.post("/api/service/part-prices/",
-                               {"part_name": "Motor", "unit_price": 50000, "effective_date": "2026-10-01"}, format="json")
+        body = {"catalog_item": item.id, "quote_company": "가상정수센터", "unit_price": 50000, "effective_date": "2026-10-01"}
+        res = self.client.post("/api/service/part-prices/", body, format="json")
         self.assertEqual(res.status_code, 201)
-        again = self.client.post("/api/service/part-prices/",
-                                 {"part_name": "Motor", "unit_price": 60000, "effective_date": "2026-10-01"}, format="json")
+        self.assertEqual(res.data["part_name"], "Motor")  # 부품명은 단가표 품명으로 채움
+        again = self.client.post("/api/service/part-prices/", {**body, "unit_price": 60000}, format="json")
         self.assertEqual(again.status_code, 400)
-        self.assertIn("effective_date", again.data)  # 같은 부품·같은 적용 시작일은 한 줄만
-        bad = self.client.post("/api/service/part-prices/",
-                               {"part_name": "Motor", "unit_price": -1, "effective_date": "2026-11-01"}, format="json")
+        self.assertIn("effective_date", again.data)  # 같은 부품·같은 업체·같은 날짜는 한 줄만
+        other = self.client.post("/api/service/part-prices/", {**body, "quote_company": "가상발전소"}, format="json")
+        self.assertEqual(other.status_code, 201)  # 업체가 다르면 같은 날짜도 따로
+        bad = self.client.post("/api/service/part-prices/", {**body, "unit_price": -1, "quote_company": ""}, format="json")
         self.assertIn("unit_price", bad.data)
+        self.assertIn("quote_company", bad.data)
         self.assertEqual(self.client.delete(f"/api/service/part-prices/{res.data['id']}/").status_code, 204)
-        self.assertFalse(PartPrice.objects.filter(part_name="Motor").exists())
+        self.assertEqual(PartPrice.objects.filter(catalog_item=item).count(), 1)
 
     def test_member_can_view_but_not_edit(self):
         self.login(edit=False)
@@ -162,6 +167,122 @@ class PartPriceTests(APITestCase):
         self.assertEqual(res.status_code, 403)
         price = PartPrice.objects.first()
         self.assertEqual(self.client.delete(f"/api/service/part-prices/{price.id}/").status_code, 403)
+
+
+class PartCatalogTests(APITestCase):
+    """부품 단가표: 파일 읽기, 뉴토크 기준값, 출장지(업체)별 평균·최저·최고·최고−최저, 검색, 설정 권한 (가상 값)"""
+
+    TODAY = date(2026, 11, 2)
+
+    def setUp(self):
+        from .models import PartCatalogItem
+
+        self.motor = PartCatalogItem.objects.create(part_no="VX-05-A-01", category="05 MOTOR", name="Motor",
+                                                    applies_to="NTI-01 ~ 03", list_price=500000, sort_order=1)
+        self.board = PartCatalogItem.objects.create(part_no="VX-07-A-01", category="07 BOARD", name="Main Board",
+                                                    list_price=None, sort_order=2)
+        for company, day, price in (("가람", date(2026, 3, 1), 480000), ("다온", date(2026, 5, 1), 560000),
+                                    ("가람", date(2026, 9, 1), 520000),   # 같은 업체 재견적 → 최근 것만
+                                    ("나래", date(2026, 12, 1), 900000)):  # 아직 적용 전 → 빼야 함
+            PartPrice.objects.create(part_name="Motor", catalog_item=self.motor, quote_company=company,
+                                     effective_date=day, unit_price=price)
+
+    def test_parse_catalog_csv(self):
+        from .catalog import parse_catalog
+
+        raw = ("[가상] 제목 줄,,,\n종류,,, 기준단가 \n05 MOTOR,,,\n"
+               'VX-05-A-01,Motor,NTI-01 ~ 03," 500,000 "\nVX-05-A-02,Motor,NTI-04 ~ 05, - \n'
+               '07 BOARD,,,\nVX-07-D-01,가상 부품A,," 1,000 "\nVX-07-D-01,가상 부품B,," 2,000 "\n')
+        items, warnings = parse_catalog(("﻿" + raw).encode("utf-8"))
+        self.assertEqual([(i["part_no"], i["category"], i["list_price"]) for i in items], [
+            ("VX-05-A-01", "05 MOTOR", 500000), ("VX-05-A-02", "05 MOTOR", None),
+            ("VX-07-D-01", "07 BOARD", 1000), ("VX-07-D-01", "07 BOARD", 2000)])
+        self.assertEqual(len(warnings), 1)  # 같은 파트넘버가 두 품목
+        cp949_items, _ = parse_catalog(raw.encode("cp949"))  # 한글 윈도우 인코딩도 읽음
+        self.assertEqual(cp949_items[2]["name"], "가상 부품A")
+
+    def test_standard_price_and_stats(self):
+        from .catalog import catalog_table
+        from .models import PriceStandard
+
+        standard = PriceStandard.get()
+        standard.default_discount_rate, standard.default_extra_price = 10, 5000
+        standard.save()
+        rows = {r["part_no"]: r for r in catalog_table(today=self.TODAY)["items"]}
+        motor = rows["VX-05-A-01"]
+        self.assertEqual(motor["standard_price"], 455000)  # 500,000 × 0.9 + 5,000
+        self.assertFalse(motor["custom"])
+        # 가람 520,000(최근) · 다온 560,000 → 평균 540,000, 최저 520,000, 최고 560,000, 차이 40,000
+        self.assertEqual(motor["stats"], {"count": 2, "average": 540000, "min": 520000, "max": 560000, "range": 40000})
+        self.assertIsNone(rows["VX-07-A-01"]["standard_price"])  # 기준단가 없음
+        self.assertEqual(rows["VX-07-A-01"]["stats"]["count"], 0)
+
+        self.motor.discount_rate, self.motor.extra_price = 0, 0  # 부품별 설정이 기본값보다 우선
+        self.motor.save()
+        self.assertEqual(catalog_table(today=self.TODAY)["items"][0]["standard_price"], 500000)
+
+    def test_search_by_part_no(self):
+        from .catalog import catalog_table
+
+        for query in ("vx05a", "05-A-01", "0501", " VX-05-A-01 "):
+            self.assertEqual([r["part_no"] for r in catalog_table(query, today=self.TODAY)["items"]], ["VX-05-A-01"], query)
+        self.assertEqual([r["part_no"] for r in catalog_table("board", today=self.TODAY)["items"]], ["VX-07-A-01"])
+        self.assertEqual(catalog_table(category="07 BOARD", today=self.TODAY)["items"][0]["name"], "Main Board")
+        self.assertEqual(catalog_table(today=self.TODAY)["categories"], ["05 MOTOR", "07 BOARD"])  # 중복 없이
+
+    def test_detail_diff_and_latest(self):
+        from .catalog import catalog_detail
+
+        d = catalog_detail(self.motor, today=self.TODAY)
+        latest = {(p["company"], p["unit_price"]) for p in d["prices"] if p["latest"]}
+        self.assertEqual(latest, {("가람", 520000), ("다온", 560000)})
+        dao = next(p for p in d["prices"] if p["company"] == "다온")
+        self.assertEqual((dao["diff"], dao["diff_rate"]), (60000, 12.0))  # 기준값 500,000 대비
+        self.assertTrue(next(p for p in d["prices"] if p["company"] == "나래")["upcoming"])
+
+    def login(self, edit):
+        self.client.force_authenticate(User.objects.create_user(
+            f"u{User.objects.count()}", password="x", role=User.Role.LEADER if edit else User.Role.MEMBER,
+            view_teams=[S], edit_teams=[S] if edit else []))
+
+    def test_api_and_permissions(self):
+        self.login(edit=False)
+        self.assertEqual(self.client.get("/api/service/part-catalog/?q=VX-05").status_code, 200)
+        self.assertEqual(self.client.get(f"/api/service/part-catalog/{self.motor.id}/").status_code, 200)
+        body = {"discount_rate": 5, "extra_price": 1000}
+        self.assertEqual(self.client.patch(f"/api/service/part-catalog/{self.motor.id}/", body, format="json").status_code, 403)
+        self.assertEqual(self.client.put("/api/service/price-standard/", body, format="json").status_code, 403)
+
+        self.login(edit=True)
+        res = self.client.patch(f"/api/service/part-catalog/{self.motor.id}/", body, format="json")
+        self.assertEqual(res.data["standard_price"], 476000)  # 500,000 × 0.95 + 1,000
+        reset = self.client.patch(f"/api/service/part-catalog/{self.motor.id}/",
+                                  {"discount_rate": None, "extra_price": None}, format="json")
+        self.assertFalse(reset.data["custom"])
+        self.assertEqual(self.client.put("/api/service/price-standard/", {"discount_rate": 150, "extra_price": 0},
+                                         format="json").status_code, 400)
+        choices = self.client.get("/api/service/part-catalog/choices/").data
+        self.assertEqual(choices["items"][0]["label"], "VX-05-A-01 Motor (NTI-01 ~ 03)")
+        self.assertEqual(choices["companies"], ["가람", "나래", "다온"])
+
+    def test_import_command(self):
+        import tempfile
+
+        from django.core.management import call_command
+
+        from .models import PartCatalogItem
+
+        content = '05 MOTOR,,,\nVX-05-A-01,Motor,NTI-01 ~ 03," 600,000 "\nVX-05-A-09,가상 신규,, - \n'
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8") as f:
+            f.write(content)
+        self.motor.discount_rate = 3
+        self.motor.save()
+        call_command("import_part_catalog", f.name, stdout=open(os.devnull, "w"))
+        os.unlink(f.name)
+        self.motor.refresh_from_db()
+        self.assertEqual((self.motor.list_price, self.motor.discount_rate), (600000, 3))  # 갱신, 부품별 설정은 유지
+        self.assertEqual(self.motor.list_price_date, date(2026, 11, 1))  # 기준일을 안 주면 임시 기준일
+        self.assertTrue(PartCatalogItem.objects.filter(part_no="VX-05-A-09").exists())
 
 
 class RequesterRegionApiTests(APITestCase):
@@ -201,16 +322,23 @@ class SeedPartPricesTests(APITestCase):
     def test_seed_is_virtual_and_does_not_overwrite(self):
         from django.core.management import call_command
 
-        from .management.commands.seed_part_prices import VIRTUAL_PRICES
-        from .management.commands.seed_service import PARTS
+        from .management.commands.seed_part_prices import VIRTUAL_CATALOG
+        from .models import PartCatalogItem
 
-        self.assertEqual(set(VIRTUAL_PRICES), set(PARTS))  # 가상 출장보고서의 부품과 같은 이름
-        PartPrice.objects.create(part_name="Motor", unit_price=1, effective_date=date(2026, 1, 1))  # 사람이 입력한 값
+        self.assertTrue(all(row[0].startswith("VX-") for row in VIRTUAL_CATALOG))  # 실제 파트넘버와 구분
         call_command("seed_part_prices", stdout=open(os.devnull, "w"))
         call_command("seed_part_prices", stdout=open(os.devnull, "w"))  # 두 번 실행해도 늘어나지 않음
-        self.assertEqual(list(PartPrice.objects.filter(part_name="Motor").values_list("unit_price", flat=True)), [1])
-        expected = sum(len(v) for k, v in VIRTUAL_PRICES.items() if k != "Motor") + 1
-        self.assertEqual(PartPrice.objects.count(), expected)
+        self.assertEqual(PartCatalogItem.objects.count(), len(VIRTUAL_CATALOG))
+
+    def test_seed_skips_when_catalog_exists(self):
+        from django.core.management import call_command
+
+        from .models import PartCatalogItem
+
+        PartCatalogItem.objects.create(part_no="XX-01-A-01", name="사람이 넣은 단가표")
+        call_command("seed_part_prices", stdout=open(os.devnull, "w"))
+        self.assertEqual(PartCatalogItem.objects.count(), 1)
+        self.assertEqual(PartPrice.objects.count(), 0)
 
 
 class TripReportManualInputTests(APITestCase):
@@ -275,3 +403,30 @@ class TripReportManualInputTests(APITestCase):
         self.assertEqual(self.client.post(self.URL, self.body(), format="json").status_code, 403)
         self.client.force_authenticate(None)
         self.assertEqual(self.client.post(self.URL, self.body(), format="json").status_code, 401)
+
+
+class SeedCompanyPricesTests(APITestCase):
+    """가상 출장지 단가 예시: 단가표 부품에 만들고, 한 번만 만들고, --clear는 예시만 지움"""
+
+    def test_create_and_clear_examples_only(self):
+        from django.core.management import call_command
+
+        from .management.commands.seed_company_prices import MARKER
+        from .models import PartCatalogItem
+
+        motor = PartCatalogItem.objects.create(part_no="VX-05-A-01", name="Motor", list_price=500000)
+        PartCatalogItem.objects.create(part_no="VX-05-A-02", name="Motor", list_price=None)  # 기준단가 없음 → 건너뜀
+        real = PartPrice.objects.create(part_name="Motor", catalog_item=motor, quote_company="실제 입력",
+                                        effective_date=date(2026, 1, 1), unit_price=1)
+        out = open(os.devnull, "w")
+        call_command("seed_company_prices", share=1, stdout=out)
+        examples = PartPrice.objects.filter(quote_note=MARKER)
+        self.assertTrue(examples.exists())
+        self.assertEqual(set(examples.values_list("catalog_item", flat=True)), {motor.id})
+        self.assertTrue(all(450000 <= p <= 625000 for p in examples.values_list("unit_price", flat=True)))
+        count = examples.count()
+        call_command("seed_company_prices", share=1, stdout=out)  # 이미 있으면 더 만들지 않음
+        self.assertEqual(examples.count(), count)
+        call_command("seed_company_prices", clear=True, stdout=out)
+        self.assertFalse(examples.exists())
+        self.assertTrue(PartPrice.objects.filter(id=real.id).exists())  # 사람이 넣은 단가는 그대로

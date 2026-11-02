@@ -9,7 +9,8 @@
 
 저장 규칙
 - 단가 = 단가(원) 칸 (부가세 제외), 적용 시작일 = 견적서 날짜
-- 견적서 품명 → 부품명: 대응표(QuotePartAlias)에 있으면 자동으로 채우고, 없으면 확인 화면에서 고른다(기억함)
+- 견적서 품명 → 단가표 파트넘버: 대응표(QuotePartAlias)에 있으면 자동으로 채우고, 없으면 확인 화면에서 고른다(기억함)
+- 업체명 = 출장지. 같은 부품·같은 업체·같은 날짜 단가는 한 줄만 (업체가 다르면 같은 날짜도 따로 저장 → 출장지별 비교)
 - 중복 기준: 견적 번호 + 견적서 품명 (같은 견적서를 두 번 올려도 한 번만 저장)
 - 견적 단가는 출장 거리·작업 강도 등에 따라 달라질 수 있어, 이유를 참고할 수 있게
   업체명(방문한 회사)·사업명·비고(사업명 아래 칸 + 아래쪽 비고 칸)를 함께 저장한다 (2026-10-26)
@@ -19,7 +20,8 @@
 import re
 from datetime import date
 
-from service.models import PartPrice, QuotePartAlias, TripReportPart
+from service.catalog import catalog_choices, duplicate_price_exists, find_catalog_item
+from service.models import PartPrice, QuotePartAlias
 
 from .base import UploadHandler
 from .pdf_form import TRUNCATED, read_pages
@@ -120,7 +122,7 @@ class QuotePdfHandler(UploadHandler):
         ("quote_no", "견적 번호"),
         ("effective_date", "적용 시작일(견적 날짜)"),
         ("quote_item", "견적서 품명"),
-        ("part_name", "부품명(출장보고서와 같은 이름)", {"suggestions": "part_names"}),
+        ("part_no", "파트넘버(단가표 부품)", {"suggestions": "catalog_items"}),
         ("unit_price", "단가(원, 부가세 제외)"),
         ("quantity", "수량"),
         ("amount", "금액(원)"),
@@ -130,13 +132,13 @@ class QuotePdfHandler(UploadHandler):
     ]
 
     def suggestions(self):
-        """확인 화면의 추천 목록: 출장보고서에 나온 부품명 + 이미 단가가 있는 부품명"""
-        names = set(TripReportPart.objects.values_list("part_name", flat=True))
-        names |= set(PartPrice.objects.values_list("part_name", flat=True))
-        return {"part_names": sorted(names)}
+        """확인 화면의 추천 목록: 단가표 부품 '파트넘버 품명 (적용 모델)'"""
+        return {"catalog_items": [c["label"] for c in catalog_choices()]}
 
     def parse(self, file):
-        aliases = dict(QuotePartAlias.objects.values_list("quote_item", "part_name"))
+        labels = {c["id"]: c["label"] for c in catalog_choices()}
+        aliases = {a.quote_item: labels.get(a.catalog_item_id, "")
+                   for a in QuotePartAlias.objects.exclude(catalog_item=None)}
         rows = []
         for page_no, page in enumerate(read_pages(file), start=1):
             quote_no = value_right_of(page, "견적번호")
@@ -157,7 +159,7 @@ class QuotePdfHandler(UploadHandler):
                         "quote_no": quote_no,
                         "effective_date": quote_date,
                         "quote_item": item["item"],
-                        "part_name": aliases.get(item["item"], ""),
+                        "part_no": aliases.get(item["item"], ""),
                         "unit_price": item["unit_price"],
                         "quantity": item["quantity"],
                         "amount": item["amount"],
@@ -191,12 +193,11 @@ class QuotePdfHandler(UploadHandler):
             effective, errors["effective_date"] = None, "날짜 형식: YYYY-MM-DD"
         if not v["quote_item"]:
             errors["quote_item"] = "견적서 품명이 없습니다."
-        if not v["part_name"]:
-            errors["part_name"] = "연결할 부품명을 고르거나 입력해 주세요."
-        elif len(v["part_name"]) > 100:
-            errors["part_name"] = "100자 이하로 입력해 주세요."
-        elif effective and PartPrice.objects.filter(part_name=v["part_name"], effective_date=effective).exists():
-            errors["part_name"] = f"이 부품은 {effective} 단가가 이미 있습니다. 부품 단가 화면에서 확인해 주세요."
+        catalog_item, message = find_catalog_item(v["part_no"])
+        if message:
+            errors["part_no"] = message
+        elif effective and duplicate_price_exists(catalog_item, v["quote_company"], effective):
+            errors["part_no"] = f"이 부품은 같은 업체의 {effective} 단가가 이미 있습니다. 교체부품 단가 화면에서 확인해 주세요."
 
         price, qty, amount = to_int(v["unit_price"]), to_int(v["quantity"]), to_int(v["amount"])
         if price is None:
@@ -208,27 +209,29 @@ class QuotePdfHandler(UploadHandler):
         for key, limit in (("quote_company", 100), ("quote_project", 200)):
             if len(v[key]) > limit:
                 errors[key] = f"{limit}자 이하로 입력해 주세요."
-        for key in ("quote_no", "quote_item", "part_name"):
+        for key in ("quote_no", "quote_item", "part_no"):
             if TRUNCATED in v[key] and key not in errors:
                 errors[key] = "잘린 값(…)입니다. 전체 값으로 고쳐 주세요."
         return errors
 
     def validate_all(self, active_rows):
-        """같은 파일 안에서 같은 부품·같은 날짜가 두 번 나오면 단가 이력이 겹치므로 오류"""
+        """같은 파일 안에서 같은 부품·같은 업체·같은 날짜가 두 번 나오면 단가가 겹치므로 오류"""
         seen = {}
         for row in active_rows:
-            key = ((row["values"].get("part_name") or "").strip(), (row["values"].get("effective_date") or "").strip())
-            if not all(key):
+            key = tuple((row["values"].get(k) or "").strip() for k in ("part_no", "quote_company", "effective_date"))
+            if not key[0] or not key[2]:
                 continue
-            if key in seen and "part_name" not in row["errors"]:
-                row["errors"]["part_name"] = f"이 파일의 {seen[key]}번째 줄과 같은 부품·같은 날짜입니다. 하나만 남겨 주세요."
+            if key in seen and "part_no" not in row["errors"]:
+                row["errors"]["part_no"] = f"이 파일의 {seen[key]}번째 줄과 같은 부품·같은 업체·같은 날짜입니다. 하나만 남겨 주세요."
             seen.setdefault(key, row["row_no"])
 
     def save(self, rows, user):
         for row in rows:
             v = {k: (val or "").strip() for k, val in row["values"].items()}
+            catalog_item, _ = find_catalog_item(v["part_no"])
             PartPrice.objects.create(
-                part_name=v["part_name"],
+                part_name=catalog_item.name,
+                catalog_item=catalog_item,
                 unit_price=to_int(v["unit_price"]),
                 effective_date=date.fromisoformat(v["effective_date"]),
                 source=PartPrice.Source.QUOTE,
@@ -239,6 +242,7 @@ class QuotePdfHandler(UploadHandler):
                 quote_note=v.get("quote_note", ""),
                 created_by=user,
             )
-            # 확인 화면에서 고른 부품명을 기억 → 다음 견적서부터 자동으로 채움
-            QuotePartAlias.objects.update_or_create(quote_item=v["quote_item"], defaults={"part_name": v["part_name"]})
+            # 확인 화면에서 고른 파트넘버를 기억 → 다음 견적서부터 자동으로 채움
+            QuotePartAlias.objects.update_or_create(
+                quote_item=v["quote_item"], defaults={"part_name": catalog_item.name, "catalog_item": catalog_item})
         return len(rows)

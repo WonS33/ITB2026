@@ -42,6 +42,8 @@ const router = createRouter({
     { path: '/password', component: () => import('@/views/PasswordView.vue') },
     // meta.fullAccess: 대표·관리자·경영지원팀 소속만
     { path: '/admin', component: () => import('@/views/AdminView.vue'), meta: { fullAccess: true } },
+    // 제품 단가·원가 (원가·마진·커미션 = 대외비, 2026-11-02)
+    { path: '/pricing', component: () => import('@/views/PricingView.vue'), meta: { fullAccess: true } },
     { path: '/forbidden', component: () => import('@/views/ForbiddenView.vue') },
     { path: '/:pathMatch(.*)*', redirect: '/' },
   ],

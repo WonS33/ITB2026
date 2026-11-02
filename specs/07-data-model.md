@@ -160,14 +160,41 @@
 - `source`(출처: `manual` 직접 입력 / `quote` 견적서), `quote_no`(견적 번호), `quote_item`(견적서 품명 원문) — 견적서 업로드 중복 기준 = 견적 번호 + 견적서 품명
 - `quote_company`(업체명 = 방문한 회사), `quote_project`(사업명), `quote_note`(비고) — 견적 단가가 달라진 이유를 참고하는 정보
 
-### QuotePartAlias — 견적서 품명 → 부품명 대응표
+- `catalog_item`(FK → PartCatalogItem, 2026-11-02) — 단가표 파트넘버와 연결. 같은 부품·같은 업체(`quote_company`)·같은 적용 시작일은 한 줄만(단가표에 연결된 줄 기준). 업체가 다르면 같은 날짜도 따로 저장 → 출장지별 비교
 
-- `quote_item` (unique), `part_name`
-- 견적서 업로드 확인 화면에서 고른 부품명을 기억해 다음 견적서부터 자동으로 채운다
+### PartCatalogItem — 부품 단가표 (2026-11-02, 실제 값은 로컬 DB에만)
+
+- `part_no`(파트넘버, 검색 기준), `category`(분류), `name`(품명), `applies_to`(적용 모델 원문), `list_price`(단가표 기준단가, 없으면 비움), `list_price_date`(단가표 기준일)
+- `discount_rate`(%)·`extra_price`(원) — 부품마다 따로 정할 때만 채움. 비어 있으면 PriceStandard 기본값
+- `sort_order`(단가표 순서). (`part_no`, `name`) unique — 원본에 같은 파트넘버가 두 품목에 쓰인 경우가 있어 품명까지 묶음(확인 필요)
+
+### PriceStandard — 뉴토크 기준값 전체 기본값 (한 줄)
+
+- `default_discount_rate`(%), `default_extra_price`(원)
+
+### QuotePartAlias — 견적서 품명 → 단가표 부품 대응표
+
+- `quote_item` (unique), `part_name`, `catalog_item`(FK, 2026-11-02)
+- 견적서 업로드 확인 화면에서 고른 파트넘버를 기억해 다음 견적서부터 자동으로 채운다
 
 ### RequesterRegion — 요청처 → 시·도·시·군 대응표
 
 - `requester` (unique), `region`, `district`
+
+## 4-1. 제품 가격 (pricing 앱, 2026-11-02 — 실제 값은 로컬 DB에만)
+
+### ProductPriceSetting — 가격 계산 기준값 (적용일별 한 줄, 가장 최근 적용일 사용)
+
+- `effective_date`(unique), `exchange_rate`, `customs_factor`, `sga_rate`(%), `margin`(나누는 값), `special_discount_rate`(%), `price_round_unit`(올림 단위, 1000), `commission_rate`(%), `commission_unit`(버림 단위, 10000), `margin_choices`(시뮬레이션 선택 목록)
+
+### ProductModel — 모델별 원재료 가격
+
+- `model_name`(unique), `series`, `assembly_usd`, `complete_usd`, `sale_price`(커미션 계산용 판매금액, 없으면 비움), `sort_order`
+- 단계별 금액(원화~특별할인가)은 저장하지 않고 기준값으로 계산한다 → 환율 등을 바꾸면 모두 다시 계산
+
+### ProductOption — 옵션 가격
+
+- `name`(unique), `price_usd` (단위·더하는 단계 확인 필요)
 
 ## 5. 업로드 공통
 
@@ -195,3 +222,5 @@
 - 2026-10-21: PartPrice 구현 — 단가 출처 확인 전이지만 웹 직접 입력으로 먼저 만듦(사용자 요청). 적용 시작일 이력 방식
 - 2026-10-21: TripReport에 `input_method`(입력 방식) 추가 — 직접 입력과 PDF 업로드를 구분
 - 2026-10-26: PartPrice에 `source`·`quote_no`·`quote_item`·`quote_company`·`quote_project`·`quote_note` 추가, QuotePartAlias 추가, UploadBatch.kind에 `quote_pdf` 추가
+- 2026-11-02: PartCatalogItem·PriceStandard 추가, PartPrice·QuotePartAlias에 `catalog_item` 추가. PartPrice 중복 기준을 "부품 + 업체 + 날짜"로 변경
+- 2026-11-02: pricing 앱(ProductPriceSetting·ProductModel·ProductOption) 추가

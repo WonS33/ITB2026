@@ -8,11 +8,12 @@ from rest_framework.views import APIView
 from accounts.permissions import TeamPermission
 from common.periods import period_from_params
 
+from .catalog import catalog_choices, catalog_detail, catalog_table
 from .metrics import reports_in, service_summary
-from .models import PartPrice, RequesterRegion, TripReport
+from .models import PartCatalogItem, PartPrice, PriceStandard, RequesterRegion, TripReport
 from .part_prices import part_price_table
 from .regions import DISTRICTS, REGIONS, region_errors
-from .serializers import PartPriceSerializer
+from .serializers import CatalogSettingSerializer, PartPriceSerializer
 from .trip_input import clean_report, find_duplicates, save_report, validate_report
 
 
@@ -150,6 +151,56 @@ class PartPriceDetailView(ServiceApiView):
     def delete(self, request, pk):
         get_object_or_404(PartPrice, pk=pk).delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class PartCatalogListView(ServiceApiView):
+    """GET /api/service/part-catalog/?q=파트넘버·품명&category= — 부품별 뉴토크 기준값 + 출장지별 평균·최저·최고·최고−최저"""
+
+    def get(self, request):
+        return Response(catalog_table(request.query_params.get("q", ""), request.query_params.get("category", "")))
+
+
+class PartCatalogChoicesView(ServiceApiView):
+    """GET /api/service/part-catalog/choices/ — 단가 입력 화면에서 고를 부품 목록 + 이미 입력된 업체(출장지) 이름"""
+
+    def get(self, request):
+        companies = (PartPrice.objects.exclude(quote_company="").order_by("quote_company")
+                     .values_list("quote_company", flat=True).distinct())
+        return Response({"items": catalog_choices(), "companies": list(companies)})
+
+
+class PartCatalogDetailView(ServiceApiView):
+    """GET   /api/service/part-catalog/{id}/ — 부품 하나의 출장지별 단가 목록 (기준값 대비 차이)
+    PATCH /api/service/part-catalog/{id}/ — 부품별 할인율·추가단가 (null이면 전체 기본값 사용, 서비스 수정 권한)"""
+
+    def get(self, request, pk):
+        return Response(catalog_detail(get_object_or_404(PartCatalogItem, pk=pk)))
+
+    def patch(self, request, pk):
+        item = get_object_or_404(PartCatalogItem, pk=pk)
+        serializer = CatalogSettingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        item.discount_rate = serializer.validated_data["discount_rate"]
+        item.extra_price = serializer.validated_data["extra_price"]
+        item.save(update_fields=["discount_rate", "extra_price", "updated_at"])
+        return Response(catalog_detail(item))
+
+
+class PriceStandardView(ServiceApiView):
+    """GET/PUT /api/service/price-standard/ — 뉴토크 기준값 전체 기본 할인율·추가단가 (PUT은 서비스 수정 권한)"""
+
+    def get(self, request):
+        standard = PriceStandard.get()
+        return Response({"discount_rate": float(standard.default_discount_rate), "extra_price": standard.default_extra_price})
+
+    def put(self, request):
+        serializer = CatalogSettingSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        standard = PriceStandard.get()
+        standard.default_discount_rate = serializer.validated_data["discount_rate"] or 0
+        standard.default_extra_price = serializer.validated_data["extra_price"] or 0
+        standard.save()
+        return self.get(request)
 
 
 class RequesterRegionListView(ServiceApiView):

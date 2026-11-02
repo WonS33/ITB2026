@@ -14,6 +14,7 @@ const groupsOf = (team) => (TEAM_MENUS[team] ?? []).filter((g) => !g.edit || can
 const ICONS = {
   production: 'M3 21V10l5 3V10l5 3V6l8-3v18H3Z M7 17h2 M12 17h2 M17 17h2',
   service: 'M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.5 2.5-2.5-.5-.5-2.5 2.5-2.5Z',
+  pricing: 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z M7.5 7.5h.01',
   admin: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z M19.4 13a7.5 7.5 0 0 0 0-2l2-1.5-2-3.5-2.4 1a7.5 7.5 0 0 0-1.7-1L15 3.5h-4l-.4 2.5a7.5 7.5 0 0 0-1.7 1l-2.4-1-2 3.5 2 1.5a7.5 7.5 0 0 0 0 2l-2 1.5 2 3.5 2.4-1a7.5 7.5 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.5 7.5 0 0 0 1.7-1l2.4 1 2-3.5-2-1.5Z',
 }
 </script>
@@ -41,6 +42,11 @@ const ICONS = {
     </nav>
 
     <nav v-if="auth.user.has_full_access" class="side-bottom">
+      <!-- 원가·마진·커미션은 대외비라 대표·관리자·경영지원팀에게만 보인다 (API에서도 확인) -->
+      <RouterLink to="/pricing" class="side-item" active-class="current">
+        <svg viewBox="0 0 24 24" class="side-icon" aria-hidden="true"><path :d="ICONS.pricing" /></svg>
+        <span>제품 단가·원가</span>
+      </RouterLink>
       <RouterLink to="/admin" class="side-item" active-class="current">
         <svg viewBox="0 0 24 24" class="side-icon" aria-hidden="true"><path :d="ICONS.admin" /></svg>
         <span>관리자 설정</span>

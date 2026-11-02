@@ -473,9 +473,9 @@ QUOTE_SAMPLE_PDF = os.path.join(settings.BASE_DIR.parent, "samples", "유상AS �
 
 
 def quote_rows(*items, quote_no="NTK-991231-0001", day="2026-09-01"):
-    """가상 견적서 행. items: (견적서 품명, 단가, 수량, 금액, 부품명)"""
+    """가상 견적서 행. items: (견적서 품명, 단가, 수량, 금액, 파트넘버)"""
     return [{"row_no": i, "sheet": "1쪽", "values": {
-        "quote_no": quote_no, "effective_date": day, "quote_item": item, "part_name": part,
+        "quote_no": quote_no, "effective_date": day, "quote_item": item, "part_no": part,
         "unit_price": f"{price:,}", "quantity": str(qty), "amount": f"{amount:,}",
         "quote_company": "가상산업", "quote_project": "가상 밸브 점검", "quote_note": "원거리 출장"}}
         for i, (item, price, qty, amount, part) in enumerate(items, start=1)]
@@ -521,61 +521,67 @@ class QuotePdfLayoutTests(APITestCase):
 
 class QuoteUploadTests(APITestCase):
     def setUp(self):
+        from service.models import PartCatalogItem
+
         self.client.force_authenticate(User.objects.create_user(
             "svc_leader", password="x", role=User.Role.LEADER, view_teams=[S], edit_teams=[S]))
+        self.motor = PartCatalogItem.objects.create(part_no="VX-05-A-01", name="Motor", applies_to="NTI-01 ~ 03")
+        self.board = PartCatalogItem.objects.create(part_no="VX-07-A-01", name="Main Board")
 
     def upload(self, rows):
         with mock.patch("uploads.handlers.quote_pdf.QuotePdfHandler.parse", return_value=(rows, 0)):
             return self.client.post("/api/uploads/", {"kind": "quote_pdf",
                                                       "file": SimpleUploadedFile("견적서.pdf", b"%PDF")}, format="multipart")
 
-    def test_save_price_and_remember_part_name(self):
-        res = self.upload(quote_rows(("XX-01 가상 모터", 100000, 2, 200000, "Motor")))
-        part_col = next(c for c in res.data["columns"] if c["key"] == "part_name")
-        self.assertIsInstance(part_col["suggestions"], list)  # 직접 입력하면서 고르는 추천 목록
+    def test_save_price_and_remember_part_no(self):
+        res = self.upload(quote_rows(("XX-01 가상 모터", 100000, 2, 200000, "VX-05-A-01 Motor (NTI-01 ~ 03)")))
+        part_col = next(c for c in res.data["columns"] if c["key"] == "part_no")
+        self.assertIn("VX-05-A-01 Motor (NTI-01 ~ 03)", part_col["suggestions"])  # 단가표에서 고르는 목록
         self.assertEqual(self.client.post(f"/api/uploads/{res.data['id']}/confirm/").data["saved_count"], 1)
         price = PartPrice.objects.get()
-        self.assertEqual((price.part_name, price.unit_price, price.effective_date, price.source, price.quote_no),
-                         ("Motor", 100000, date(2026, 9, 1), "quote", "NTK-991231-0001"))
-        self.assertEqual(QuotePartAlias.objects.get(quote_item="XX-01 가상 모터").part_name, "Motor")
-        # 단가 화면에 출처와 함께 업체·사업명·비고 표시 (단가가 달라진 이유 참고)
-        history = self.client.get("/api/service/part-prices/").data["parts"][0]["history"][0]
-        self.assertEqual((history["source"], history["company"], history["project"], history["note"]),
-                         ("견적서 NTK-991231-0001", "가상산업", "가상 밸브 점검", "원거리 출장"))
+        self.assertEqual((price.catalog_item, price.part_name, price.unit_price, price.quote_company, price.source),
+                         (self.motor, "Motor", 100000, "가상산업", "quote"))
+        self.assertEqual(QuotePartAlias.objects.get(quote_item="XX-01 가상 모터").catalog_item, self.motor)
+        detail = self.client.get(f"/api/service/part-catalog/{self.motor.id}/").data["prices"][0]
+        self.assertEqual((detail["company"], detail["quote_no"], detail["project"], detail["note"]),
+                         ("가상산업", "NTK-991231-0001", "가상 밸브 점검", "원거리 출장"))
 
     def test_same_quote_twice_is_skipped(self):
-        res = self.upload(quote_rows(("XX-01 가상 모터", 100000, 1, 100000, "Motor")))
+        res = self.upload(quote_rows(("XX-01 가상 모터", 100000, 1, 100000, "VX-05-A-01")))
         self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
-        again = self.upload(quote_rows(("XX-01 가상 모터", 100000, 1, 100000, "Motor")))
+        again = self.upload(quote_rows(("XX-01 가상 모터", 100000, 1, 100000, "VX-05-A-01")))
         self.assertEqual(again.data["summary"]["duplicate_rows"], 1)
         self.assertFalse(again.data["allow_duplicate_override"])  # 견적 번호가 기준이라 '중복 아님' 없음
 
     def test_validation(self):
-        PartPrice.objects.create(part_name="Main Board", unit_price=1, effective_date=date(2026, 9, 1))
+        PartPrice.objects.create(part_name="Main Board", catalog_item=self.board, quote_company="가상산업",
+                                 unit_price=1, effective_date=date(2026, 9, 1))
         res = self.upload(quote_rows(
-            ("가상 품명A", 100000, 2, 150000, "Motor"),       # 수량 × 단가 ≠ 금액
-            ("가상 품명B", 50000, 1, 50000, ""),               # 부품명 없음
-            ("가상 품명C", 70000, 1, 70000, "Main Board"),     # 같은 날짜 단가가 이미 있음
-            ("가상 품명D", 80000, 1, 80000, "Motor"),          # 파일 안에서 Motor·같은 날짜가 두 번
+            ("가상 품명A", 100000, 2, 150000, "VX-05-A-01"),   # 수량 × 단가 ≠ 금액
+            ("가상 품명B", 50000, 1, 50000, ""),               # 파트넘버 없음
+            ("가상 품명C", 70000, 1, 70000, "VX-07-A-01"),     # 같은 업체·같은 날짜 단가가 이미 있음
+            ("가상 품명D", 80000, 1, 80000, "VX-05-A-01"),     # 파일 안에서 같은 부품·업체·날짜가 두 번
+            ("가상 품명E", 80000, 1, 80000, "VX-99-Z-99"),     # 단가표에 없는 번호
         ))
         errors = [r["errors"] for r in res.data["rows"]]
         self.assertIn("amount", errors[0])
-        self.assertIn("part_name", errors[1])
-        self.assertIn("이미 있습니다", errors[2]["part_name"])
-        self.assertIn("1번째 줄", errors[3]["part_name"])
+        self.assertIn("part_no", errors[1])
+        self.assertIn("이미 있습니다", errors[2]["part_no"])
+        self.assertIn("1번째 줄", errors[3]["part_no"])
+        self.assertIn("단가표에 없는", errors[4]["part_no"])
 
-    def test_alias_fills_part_name_on_next_upload(self):
-        QuotePartAlias.objects.create(quote_item="XX-01 가상 모터", part_name="Motor")
+    def test_alias_fills_part_no_on_next_upload(self):
+        QuotePartAlias.objects.create(quote_item="XX-01 가상 모터", part_name="Motor", catalog_item=self.motor)
         handler = HANDLERS["quote_pdf"]
         with mock.patch("uploads.handlers.quote_pdf.read_pages", return_value=[QuotePdfLayoutTests().page()]):
             rows, _ = handler.parse(None)
-        self.assertEqual([r["values"]["part_name"] for r in rows], ["Motor", ""])
+        self.assertEqual([r["values"]["part_no"] for r in rows], ["VX-05-A-01 Motor (NTI-01 ~ 03)", ""])
         self.assertEqual(rows[0]["values"]["quote_note"], "야간 작업\n원거리 출장\n장비 추가")  # 비고 두 칸을 합침
 
     def test_member_cannot_upload(self):
         self.client.force_authenticate(User.objects.create_user(
             "svc_member", password="x", role=User.Role.MEMBER, view_teams=[S]))
-        self.assertEqual(self.upload(quote_rows(("가상", 1, 1, 1, "Motor"))).status_code, 403)
+        self.assertEqual(self.upload(quote_rows(("가상", 1, 1, 1, "VX-05-A-01"))).status_code, 403)
 
 
 @unittest.skipUnless(os.path.exists(QUOTE_SAMPLE_PDF), "실제 견적서 샘플이 없는 PC에서는 건너뜀 (samples/는 Git 제외)")
@@ -583,6 +589,9 @@ class RealSampleQuoteTests(APITestCase):
     """실제 샘플 읽기 확인. 실제 기업 값은 코드에 적지 않고 형식만 확인한다 (CLAUDE.md 7절)."""
 
     def test_parse_real_sample(self):
+        from service.models import PartCatalogItem
+
+        PartCatalogItem.objects.create(part_no="VX-05-A-01", name="가상 부품")
         handler = HANDLERS["quote_pdf"]
         with open(QUOTE_SAMPLE_PDF, "rb") as f:
             rows, _ = handler.parse(f)
@@ -593,5 +602,5 @@ class RealSampleQuoteTests(APITestCase):
             self.assertRegex(v["effective_date"], r"^\d{4}-\d{2}-\d{2}$")
             self.assertTrue(v["quote_item"])
             self.assertTrue(v["quote_company"] and v["quote_project"])  # 업체명·사업명 읽힘
-            # 부품명만 고르면 오류 없음 (수량 × 단가 = 금액 확인 포함)
-            self.assertEqual(handler.validate({**v, "part_name": "가상 부품"}), {})
+            # 파트넘버만 고르면 오류 없음 (수량 × 단가 = 금액 확인 포함)
+            self.assertEqual(handler.validate({**v, "part_no": "VX-05-A-01"}), {})

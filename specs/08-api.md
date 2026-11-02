@@ -67,11 +67,22 @@
 | POST | `/api/service/reports/` | 출장보고서 1건 직접 입력. 동행자·부품은 이름 목록, 제품은 `{model_name, spec, serial_no_raw, quantity}` 목록. 오류 400(칸별 메시지), 같은 시작일·요청처가 있으면 409 → `allow_duplicate: true`로 다시 보내면 저장 | 서비스 수정 |
 | GET | `/api/service/reports/{id}/` | 출장보고서 상세(고장·작업 내용 포함) | 서비스 열람 |
 | GET | `/api/service/part-prices/` | 부품별 현재·직전 단가, 증감, 이력, 단가 미등록 부품, 부품명 목록 | 서비스 열람 |
-| POST | `/api/service/part-prices/` | 단가 한 줄 추가 (`part_name`, `unit_price`, `effective_date`) | 서비스 수정 |
+| POST | `/api/service/part-prices/` | 출장지 단가 한 줄 추가 (`catalog_item`, `quote_company`, `unit_price`, `effective_date`, `quote_note`). 부품명은 단가표 품명으로 채움. 같은 부품·업체·날짜는 400 | 서비스 수정 |
+| GET | `/api/service/part-catalog/?q=&category=` | 부품 단가표: 파트넘버·품명 검색, 항목마다 뉴토크 기준값(`standard_price`)과 출장지별 `stats`(count·average·min·max·range), 전체 기본값, 분류 목록, 단가표 기준일 | 서비스 열람 |
+| GET | `/api/service/part-catalog/choices/` | 입력 화면에서 고를 부품 목록(`label` = 파트넘버 품명 (적용 모델)) + 입력된 업체 이름 | 서비스 열람 |
+| GET / PATCH | `/api/service/part-catalog/{id}/` | 부품 하나의 출장지별 단가 목록(기준값 대비 `diff`·`diff_rate`, 비교 기준 여부 `latest`) / 부품별 할인율·추가단가(null이면 기본값) | 조회: 서비스 열람 / 수정: 서비스 수정 |
+| GET / PUT | `/api/service/price-standard/` | 뉴토크 기준값 전체 기본 할인율·추가단가 | 조회: 서비스 열람 / 수정: 서비스 수정 |
 | DELETE | `/api/service/part-prices/{id}/` | 잘못 입력한 단가 한 줄 삭제 | 서비스 수정 |
 | (업로드) | `POST /api/uploads/` `kind=quote_pdf` | 유상 A/S 견적서 PDF → 부품 단가 (업로드 공통 흐름: 확인 → 저장) | 서비스 수정 |
 | GET | `/api/service/requester-regions/` | 요청처 → 시·도·시·군 대응표 (보고서 수 포함), 시·도·시·군 목록 | 서비스 열람 |
 | PATCH | `/api/service/requester-regions/{id}/` | 시·도·시·군 변경 → 같은 요청처의 저장된 출장보고서 지역도 함께 변경 | 서비스 수정 |
+
+## 5-1. 제품 단가·원가 (대표·관리자·경영지원팀만, 응답 캐시 안 함)
+
+| 메서드 | 주소 | 기능 | 권한 |
+|---|---|---|---|
+| GET | `/api/pricing/products/?exchange_rate=&margin=&option=&base=assembly\|complete` | 기준값(`setting`), 모델별 단계별 금액(`steps`)·기준 판매가 대비 `change`, 옵션·마진 선택 목록·시리즈, 커미션 표(`commissions`). 쿼리 값은 시뮬레이션(저장 안 함), `simulation.active` | 전체(대표·관리자·경영지원팀) |
+| GET | `/api/pricing/commission/?model=&sale_amount=` | 판매금액으로 이익·커미션·커미션 차감 이익·마진율 계산 | 전체 |
 
 ## 6. 업로드 (추출 → 확인 → 저장)
 
@@ -104,3 +115,5 @@
 - 2026-10-27: 제조내역·수주 내역 목록과 엑셀 내려받기(`records/`, `records/export/`, `orders/`, `orders/export/`), 업로드 이력(`GET /api/uploads/?team=`) 추가. 생산팀 대시보드 `period`에 `months` 추가
 - 2026-10-27: `GET /api/production/sales/`(판매 실적 설정·비교·교차 필터) 추가, 대시보드 응답에서 `sales` 분리
 - 2026-10-27: 생산팀 대시보드에 `compare` 파라미터와 `compare`·`delivery`·`unshipped`, 월별 `orders`·`last_year` 추가
+- 2026-11-02: 부품 단가표 API(`part-catalog/`, `part-catalog/choices/`, `part-catalog/{id}/`, `price-standard/`) 추가, 단가 입력에 `catalog_item`·`quote_company` 필수. 견적서 업로드 확인 열 `part_name` → `part_no`
+- 2026-11-02: 제품 단가·원가 API(`/api/pricing/products/`, `/api/pricing/commission/`) 추가
