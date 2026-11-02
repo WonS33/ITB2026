@@ -4,9 +4,16 @@ GET /api/pricing/products/?exchange_rate=&margin=&option=&base=assembly|complete
     모델별 단계별 금액 + 커미션·이익. 쿼리로 값을 바꾸면 저장하지 않고 다시 계산만 한다(시뮬레이션)
 GET /api/pricing/commission/?model=&sale_amount=
     판매금액을 넣어 이익·커미션·커미션 차감 이익·마진율 계산 (현재 기준값)
+GET/POST /api/pricing/settings/
+    기준값 변경 기록(적용일별) / 화면에서 기준값을 바꿔 새 적용일로 저장 (2026-11-02)
+GET /api/pricing/access-log/
+    대외비 화면 열람 기록 최근 100건 (2026-11-02)
 """
 
+from datetime import timedelta
 from decimal import Decimal, InvalidOperation
+
+from django.utils import timezone
 
 from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
@@ -15,7 +22,8 @@ from rest_framework.views import APIView
 from accounts.permissions import IsFullAccess
 
 from .engine import STEPS, compute_commission, compute_steps, won
-from .models import ProductModel, ProductOption, ProductPriceSetting
+from .models import PricingAccessLog, ProductModel, ProductOption, ProductPriceSetting
+from .serializers import SettingChangeSerializer
 
 BASES = {"assembly": "Assembly", "complete": "Complete"}
 
@@ -28,6 +36,17 @@ class PricingApiView(APIView):
         response = super().finalize_response(request, response, *args, **kwargs)
         response["Cache-Control"] = "no-store"
         return response
+
+
+def log_access(user):
+    """열람 기록: 같은 사람은 10분에 한 번만 (시뮬레이션 값을 바꿀 때마다 API를 부르므로)"""
+    recent = timezone.now() - timedelta(minutes=10)
+    if not PricingAccessLog.objects.filter(user=user, viewed_at__gte=recent).exists():
+        PricingAccessLog.objects.create(user=user)
+
+
+def user_name(user):
+    return (f"{user.last_name}{user.first_name}" or user.username) if user else ""
 
 
 def _current_setting():
@@ -77,6 +96,7 @@ def _setting_json(setting):
 
 class ProductPriceView(PricingApiView):
     def get(self, request):
+        log_access(request.user)
         setting = _current_setting()
         params = request.query_params
         base_values = _setting_values(setting)
@@ -140,6 +160,7 @@ class ProductPriceView(PricingApiView):
 
 class CommissionCalcView(PricingApiView):
     def get(self, request):
+        log_access(request.user)
         setting = _current_setting()
         model = ProductModel.objects.filter(model_name=request.query_params.get("model", "")).first()
         if model is None:
@@ -150,3 +171,58 @@ class CommissionCalcView(PricingApiView):
         margin_price = compute_steps(model.assembly_usd, **_setting_values(setting))["margin_price"]
         return Response({"model_name": model.model_name, **compute_commission(
             sale_amount, margin_price, commission_rate=setting.commission_rate, commission_unit=setting.commission_unit)})
+
+
+# 화면에서 바꿀 수 있는 기준값 (반올림·버림 단위와 마진 선택 목록은 지금 값을 그대로 이어 쓴다)
+EDITABLE = [("exchange_rate", "환율"), ("customs_factor", "통관 배수"), ("sga_rate", "판관비율"), ("margin", "마진 값"),
+            ("special_discount_rate", "특별할인율"), ("commission_rate", "커미션율")]
+
+
+class SettingHistoryView(PricingApiView):
+    def get(self, request):
+        settings = list(ProductPriceSetting.objects.select_related("created_by").order_by("-effective_date"))
+        rows = []
+        for i, s in enumerate(settings):
+            previous = settings[i + 1] if i + 1 < len(settings) else None
+            rows.append({
+                "id": s.id,
+                **_setting_json(s),
+                "note": s.note,
+                "created_by": user_name(s.created_by) or "계산표 파일",
+                "created_at": s.created_at,
+                # 바로 전 적용일 대비 바뀐 값
+                "changes": [
+                    {"label": label, "old": float(getattr(previous, key)), "new": float(getattr(s, key))}
+                    for key, label in EDITABLE if previous and getattr(previous, key) != getattr(s, key)
+                ],
+            })
+        return Response({"fields": [{"key": k, "label": label} for k, label in EDITABLE], "settings": rows})
+
+    def post(self, request):
+        serializer = SettingChangeSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        base = _current_setting()
+        values = {key: data[key] for key, _ in EDITABLE}
+        if all(values[key] == getattr(base, key) for key in values):
+            return Response({"detail": "바뀐 값이 없습니다."}, status=400)
+        if data["effective_date"] < base.effective_date:
+            return Response({"detail": f"적용일은 지금 기준값 적용일({base.effective_date}) 이후여야 합니다."}, status=400)
+        # 같은 적용일이 있으면 그 줄을 고치고, 없으면 새 줄 (예전 적용일 값은 기록으로 남는다)
+        ProductPriceSetting.objects.update_or_create(
+            effective_date=data["effective_date"],
+            defaults={**values, "note": data.get("note", ""), "created_by": request.user,
+                      "price_round_unit": base.price_round_unit, "commission_unit": base.commission_unit,
+                      "margin_choices": base.margin_choices},
+        )
+        return self.get(request)
+
+
+class AccessLogView(PricingApiView):
+    def get(self, request):
+        logs = PricingAccessLog.objects.select_related("user")[:100]
+        return Response({"logs": [
+            {"user": user_name(log.user), "username": log.user.username, "role": log.user.get_role_display(),
+             "viewed_at": log.viewed_at}
+            for log in logs
+        ]})

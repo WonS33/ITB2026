@@ -9,3 +9,8 @@ export function getProductPrices(sim = {}) {
 }
 export const calcCommission = (model, saleAmount) =>
   apiFetch(`/pricing/commission/?model=${encodeURIComponent(model)}&sale_amount=${encodeURIComponent(saleAmount)}`)
+// 기준값 변경 기록 / 화면에서 기준값 바꾸기 (새 적용일로 저장, 예전 값은 기록으로 남음)
+export const getPriceSettings = () => apiFetch('/pricing/settings/')
+export const savePriceSetting = (body) => apiFetch('/pricing/settings/', { method: 'POST', body })
+// 대외비 화면 열람 기록 (최근 100건)
+export const getAccessLog = () => apiFetch('/pricing/access-log/')

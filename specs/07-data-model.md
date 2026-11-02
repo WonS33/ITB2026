@@ -170,7 +170,13 @@
 
 ### PriceStandard — 뉴토크 기준값 전체 기본값 (한 줄)
 
-- `default_discount_rate`(%), `default_extra_price`(원)
+- `default_discount_rate`(%), `default_extra_price`(원), `low_alert_rate`(크게 낮음 표시 기준 %, 임시 10 — 2026-11-02)
+
+### PartListPrice — 단가표 개정 이력 (2026-11-02)
+
+- `item`(FK PartCatalogItem), `list_price`(없으면 비움), `effective_date`(단가표 기준일). (`item`, `effective_date`) unique
+- 단가표를 새 기준일로 넣으면 한 줄 더함(예전 값은 지우지 않음). PartCatalogItem의 `list_price`·`list_price_date`는 가장 최근 기준일 값
+- 업체 단가는 **견적 적용 시작일 당시 단가표**의 기준값과 비교(단가표보다 이른 견적은 가장 오래된 단가표). 할인율·추가단가는 이력 없이 지금 설정
 
 ### QuotePartAlias — 견적서 품명 → 단가표 부품 대응표
 
@@ -186,6 +192,11 @@
 ### ProductPriceSetting — 가격 계산 기준값 (적용일별 한 줄, 가장 최근 적용일 사용)
 
 - `effective_date`(unique), `exchange_rate`, `customs_factor`, `sga_rate`(%), `margin`(나누는 값), `special_discount_rate`(%), `price_round_unit`(올림 단위, 1000), `commission_rate`(%), `commission_unit`(버림 단위, 10000), `margin_choices`(시뮬레이션 선택 목록)
+- `note`(변경 사유), `created_by`(공통 칸, 화면에서 바꾼 사람 — 계산표 파일로 넣은 줄은 비움) — 2026-11-02. 화면에서 바꾸면 새 적용일로 한 줄 더해 변경 기록이 남음
+
+### PricingAccessLog — 제품 단가·원가 열람 기록 (2026-11-02)
+
+- `user`(FK), `viewed_at`. 같은 사람은 10분에 한 번만 남김(시뮬레이션마다 API를 부르므로)
 
 ### ProductModel — 모델별 원재료 가격
 
@@ -224,3 +235,4 @@
 - 2026-10-26: PartPrice에 `source`·`quote_no`·`quote_item`·`quote_company`·`quote_project`·`quote_note` 추가, QuotePartAlias 추가, UploadBatch.kind에 `quote_pdf` 추가
 - 2026-11-02: PartCatalogItem·PriceStandard 추가, PartPrice·QuotePartAlias에 `catalog_item` 추가. PartPrice 중복 기준을 "부품 + 업체 + 날짜"로 변경
 - 2026-11-02: pricing 앱(ProductPriceSetting·ProductModel·ProductOption) 추가
+- 2026-11-02: PartListPrice(단가표 개정 이력, 기존 값은 첫 이력으로 옮김), PriceStandard.`low_alert_rate`, ProductPriceSetting.`note`, PricingAccessLog 추가(사용자 요청, 2순위 개선)

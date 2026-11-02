@@ -18,7 +18,7 @@ const saved = ref(false)
     <p v-if="saved" class="small">
       저장한 내용은 <RouterLink to="/service">대시보드</RouterLink>와
       <RouterLink to="/service/reports">출장보고서 목록</RouterLink>에서 확인할 수 있습니다.
-      새 부품이 나왔다면 <RouterLink to="/service/part-prices/input">부품 단가 입력</RouterLink>에서 단가를 넣어 주세요.
+      새 부품이 나왔다면 <RouterLink to="/service/part-prices/input">단가 직접 입력</RouterLink>에서 단가를 넣어 주세요.
     </p>
   </div>
 </template>

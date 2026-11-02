@@ -1,5 +1,5 @@
 <script setup>
-// 출장지 단가 입력 — 서비스팀 수정 권한자만 (라우터에서 막고, 백엔드 API에서도 다시 확인함)
+// 단가 직접 입력 — 서비스팀 수정 권한자만 (라우터에서 막고, 백엔드 API에서도 다시 확인함)
 // 파트넘버(단가표 부품)를 검색해 고르고, 출장지(업체)·단가·적용 시작일을 입력한다
 // 같은 부품이라도 업체마다 따로 쌓이고, 교체부품 단가 화면에서 뉴토크 기준값·평균·최저·최고와 비교된다
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -76,7 +76,7 @@ const won = (v) => (v === null || v === undefined ? '-' : `${v.toLocaleString()}
   <div>
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
     <div class="card mb-3" style="max-width: 860px"><div class="card-body">
-      <h2 class="h6">출장지 단가 입력</h2>
+      <h2 class="h6">단가 직접 입력</h2>
       <p class="text-muted small">
         파트넘버를 검색해 고른 뒤 출장지(업체)와 단가를 입력하세요. 같은 업체의 단가가 바뀌면 새 적용 시작일로 한 줄을 더 입력합니다.
         견적서 PDF가 있으면 [견적서 업로드]로 한 번에 넣을 수 있습니다.

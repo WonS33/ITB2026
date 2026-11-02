@@ -145,6 +145,50 @@ class PricingApiTests(APITestCase):
         self.assertEqual(self.client.get("/api/pricing/products/").status_code, 200)
 
 
+class SettingChangeAndAccessLogTests(APITestCase):
+    """화면에서 기준값 바꾸기·변경 기록, 대외비 열람 기록 (2026-11-02)"""
+
+    def setUp(self):
+        ProductPriceSetting.objects.create(effective_date=date(2026, 1, 1), commission_rate=15,
+                                           margin_choices=[0.7, 0.8], **SETTING)
+        ProductModel.objects.create(model_name="VXA-01", series="VXA", assembly_usd=100, sort_order=1)
+        self.admin = User.objects.create_user("boss", password="x", role=User.Role.ADMIN)
+        self.client.force_authenticate(self.admin)
+
+    def body(self, **changes):
+        return {"effective_date": "2026-03-01", "note": "환율 반영", **{k: str(v) for k, v in SETTING.items()},
+                "commission_rate": "15", **changes}
+
+    def test_change_creates_new_setting_with_history(self):
+        res = self.client.post("/api/pricing/settings/", self.body(exchange_rate="1100"), format="json")
+        self.assertEqual(res.status_code, 200)
+        latest = res.data["settings"][0]
+        self.assertEqual((latest["exchange_rate"], latest["created_by"], latest["note"]), (1100.0, "boss", "환율 반영"))
+        self.assertEqual(latest["changes"], [{"label": "환율", "old": 1000.0, "new": 1100.0}])
+        self.assertEqual(res.data["settings"][1]["created_by"], "계산표 파일")  # 예전 값은 기록으로 남음
+        self.assertEqual(ProductPriceSetting.current().exchange_rate, 1100)
+        self.assertEqual(ProductPriceSetting.current().margin_choices, [0.7, 0.8])  # 바꾸지 않는 값은 이어 씀
+        # 그다음 계산은 새 기준값으로: 100 USD × 1,100 = 110,000 → 132,000 → 165,000 → 206,250 → 207,000
+        self.assertEqual(self.client.get("/api/pricing/products/").data["models"][0]["steps"]["sale_price"], 207000)
+
+    def test_change_validation(self):
+        self.assertEqual(self.client.post("/api/pricing/settings/", self.body(), format="json").status_code, 400)  # 바뀐 값 없음
+        self.assertEqual(self.client.post("/api/pricing/settings/", self.body(exchange_rate="1100", effective_date="2025-12-01"),
+                                          format="json").status_code, 400)  # 지금 적용일보다 이전
+        self.assertEqual(self.client.post("/api/pricing/settings/", self.body(exchange_rate="1100", effective_date="2099-01-01"),
+                                          format="json").status_code, 400)  # 미래
+        self.client.force_authenticate(User.objects.create_user(
+            "svc", password="x", role=User.Role.LEADER, view_teams=[User.Team.SERVICE], edit_teams=[User.Team.SERVICE]))
+        self.assertEqual(self.client.post("/api/pricing/settings/", self.body(exchange_rate="1100"), format="json").status_code, 403)
+        self.assertEqual(self.client.get("/api/pricing/access-log/").status_code, 403)
+
+    def test_access_log_once_per_10_minutes(self):
+        self.client.get("/api/pricing/products/")
+        self.client.get("/api/pricing/products/?exchange_rate=1200")  # 시뮬레이션은 다시 남기지 않음
+        logs = self.client.get("/api/pricing/access-log/").data["logs"]
+        self.assertEqual([(log["user"], log["role"]) for log in logs], [("boss", User.Role.ADMIN.label)])
+
+
 class SeedTests(APITestCase):
     def test_seed_is_virtual_and_idempotent(self):
         from .management.commands.seed_product_prices import VIRTUAL_MODELS

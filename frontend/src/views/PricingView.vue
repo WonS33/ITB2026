@@ -3,8 +3,9 @@
 // 1) 제품 단가표: 모델별 원재료 → 판매가 → 특별할인가 단계별 금액 (기업 계산표 재현)
 // 2) 시뮬레이션: 환율·마진·옵션·원재료 기준을 바꿔 다시 계산 (저장하지 않음)
 // 3) 커미션·이익: 계산표의 판매금액 기준 표 + 판매금액을 넣어 계산
+// 4) 기준값 바꾸기(새 적용일로 저장) + 변경 기록, 5) 열람 기록 (2026-11-02)
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { calcCommission, getProductPrices } from '@/api/pricing'
+import { calcCommission, getAccessLog, getPriceSettings, getProductPrices, savePriceSetting } from '@/api/pricing'
 
 const data = ref(null)
 const error = ref('')
@@ -20,7 +21,47 @@ async function load() {
     error.value = e.message
   }
 }
-onMounted(load)
+onMounted(() => {
+  load()
+  loadRecords()
+})
+
+// ── 기준값 변경 기록·열람 기록 ──
+const history = ref(null)
+const logs = ref([])
+async function loadRecords() {
+  try {
+    ;[history.value, { logs: logs.value }] = await Promise.all([getPriceSettings(), getAccessLog()])
+  } catch (e) {
+    error.value = e.message
+  }
+}
+const dateTime = (v) => (v ? v.slice(0, 16).replace('T', ' ') : '')
+// 오늘 날짜 (YYYY-MM-DD, 한국 시간 기준)
+const today = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
+
+// ── 기준값 바꾸기 ──
+const settingForm = reactive({ open: false, values: {}, effective_date: '', note: '', error: '' })
+function openSettingForm() {
+  const s = data.value.setting
+  Object.assign(settingForm, {
+    open: true,
+    error: '',
+    note: '',
+    effective_date: today(),
+    values: Object.fromEntries(history.value.fields.map((f) => [f.key, s[f.key]])),
+  })
+}
+async function saveSetting() {
+  settingForm.error = ''
+  try {
+    history.value = await savePriceSetting({ ...settingForm.values, effective_date: settingForm.effective_date, note: settingForm.note })
+    settingForm.open = false
+    await load()
+  } catch (e) {
+    settingForm.error = e.message
+  }
+}
 // 숫자를 입력하는 동안 매번 부르지 않도록 잠깐 기다렸다가 다시 계산
 let timer
 watch(sim, () => {
@@ -72,7 +113,10 @@ async function runCalc() {
     <template v-if="data">
       <!-- 기준값 -->
       <div class="card mb-3"><div class="card-body small">
-        <h2 class="h6">가격 계산 기준값 <span class="text-muted fw-normal">· {{ data.setting.effective_date }} 적용 (임시 기준일)</span></h2>
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+          <h2 class="h6 mb-0">가격 계산 기준값 <span class="text-muted fw-normal">· {{ data.setting.effective_date }} 적용</span></h2>
+          <button v-if="history && !settingForm.open" type="button" class="btn btn-outline-primary btn-sm" @click="openSettingForm">기준값 바꾸기</button>
+        </div>
         <div class="d-flex flex-wrap gap-4">
           <span>환율 <strong>{{ data.setting.exchange_rate.toLocaleString() }}원/USD</strong></span>
           <span>통관 배수 <strong>× {{ data.setting.customs_factor }}</strong></span>
@@ -81,6 +125,51 @@ async function runCalc() {
           <span>특별할인 <strong>{{ pct(data.setting.special_discount_rate) }}</strong></span>
           <span>커미션 <strong>{{ pct(data.setting.commission_rate) }}</strong> ({{ data.setting.commission_unit.toLocaleString() }}원 미만 버림)</span>
         </div>
+
+        <!-- 기준값 바꾸기: 새 적용일로 저장 (예전 값은 아래 변경 기록에 남음) -->
+        <form v-if="settingForm.open" class="border rounded p-2 mt-3" @submit.prevent="saveSetting">
+          <div class="row g-2">
+            <div v-for="f in history.fields" :key="f.key" class="col-6 col-md-2">
+              <label class="form-label mb-0">{{ f.label }}</label>
+              <input v-model="settingForm.values[f.key]" type="number" step="any" required class="form-control form-control-sm" />
+            </div>
+            <div class="col-6 col-md-3">
+              <label class="form-label mb-0">적용일</label>
+              <input v-model="settingForm.effective_date" type="date" :max="today()" :min="data.setting.effective_date" required class="form-control form-control-sm" />
+            </div>
+            <div class="col-12 col-md-9">
+              <label class="form-label mb-0">변경 사유</label>
+              <input v-model="settingForm.note" maxlength="200" class="form-control form-control-sm" placeholder="예: 11월 환율 반영" />
+            </div>
+          </div>
+          <div class="d-flex align-items-center gap-2 mt-2">
+            <button class="btn btn-primary btn-sm">저장</button>
+            <button type="button" class="btn btn-outline-secondary btn-sm" @click="settingForm.open = false">취소</button>
+            <span v-if="settingForm.error" class="text-danger">{{ settingForm.error }}</span>
+            <span v-else class="text-muted">저장하면 그 적용일부터 모든 계산에 새 값이 쓰입니다. 같은 적용일이 이미 있으면 그 값을 고칩니다.</span>
+          </div>
+        </form>
+
+        <!-- 변경 기록 -->
+        <details v-if="history?.settings.length" class="mt-3">
+          <summary class="text-muted">기준값 변경 기록 {{ history.settings.length }}건</summary>
+          <table class="table table-sm small mb-0 mt-1">
+            <thead><tr><th>적용일</th><th>바뀐 값 (이전 → 새 값)</th><th>사유</th><th>입력</th></tr></thead>
+            <tbody>
+              <tr v-for="h in history.settings" :key="h.id">
+                <td class="text-nowrap">{{ h.effective_date }}</td>
+                <td>
+                  <template v-if="h.changes.length">
+                    <div v-for="c in h.changes" :key="c.label">{{ c.label }}: {{ c.old.toLocaleString() }} → <strong>{{ c.new.toLocaleString() }}</strong></div>
+                  </template>
+                  <span v-else class="text-muted">처음 기준값</span>
+                </td>
+                <td>{{ h.note || '-' }}</td>
+                <td class="text-nowrap text-muted">{{ h.created_by }} · {{ dateTime(h.created_at) }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </details>
       </div></div>
 
       <!-- 시뮬레이션 -->
@@ -225,6 +314,24 @@ async function runCalc() {
           이익 = 판매금액 − 원가(마진 반영), 커미션 = 판매금액 × {{ pct(data.setting.commission_rate) }}({{ data.setting.commission_unit.toLocaleString() }}원 미만 버림),
           마진율 = 커미션 차감 이익 ÷ 판매금액 (계산표에 빈칸이라 임시 정의 — 확인 필요).
         </p>
+      </div></div>
+
+      <!-- 대외비 화면 열람 기록 -->
+      <div class="card mb-3"><div class="card-body small">
+        <h2 class="h6">열람 기록 <span class="text-muted fw-normal">· 이 화면을 누가 언제 봤는지 (같은 사람은 10분에 한 번, 최근 100건)</span></h2>
+        <p v-if="!logs.length" class="text-muted mb-0">기록이 없습니다.</p>
+        <div v-else class="table-responsive" style="max-height: 280px">
+          <table class="table table-sm small mb-0">
+            <thead class="table-light sticky-top"><tr><th>열람 일시</th><th>사용자</th><th>역할</th></tr></thead>
+            <tbody>
+              <tr v-for="(l, i) in logs" :key="i">
+                <td class="text-nowrap">{{ dateTime(l.viewed_at) }}</td>
+                <td>{{ l.user }} <span class="text-muted">({{ l.username }})</span></td>
+                <td>{{ l.role }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div></div>
     </template>
   </div>

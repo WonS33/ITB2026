@@ -94,6 +94,8 @@ class PriceStandard(models.Model):
 
     default_discount_rate = models.DecimalField("기본 할인율(%)", max_digits=5, decimal_places=2, default=0)
     default_extra_price = models.IntegerField("기본 추가단가(원)", default=0)
+    # 할인 과다 점검: 업체 단가가 뉴토크 기준값보다 이 비율(%) 이상 낮으면 화면에 표시 (임시 10%, 기업 확인 필요 — 2026-11-02)
+    low_alert_rate = models.DecimalField("크게 낮음 표시 기준(%)", max_digits=5, decimal_places=2, default=10)
     updated_at = models.DateTimeField("수정 일시", auto_now=True)
 
     class Meta:
@@ -132,6 +134,27 @@ class PartCatalogItem(TimeStampedModel):
 
     def __str__(self):
         return f"{self.part_no} {self.name}"
+
+
+class PartListPrice(models.Model):
+    """단가표 개정 이력: 부품의 단가표 기준단가를 기준일별로 보관한다 (2026-11-02)
+
+    단가표를 새로 넣어도 예전 기준단가를 지우지 않아, 예전 견적은 **견적 당시 단가표**의 기준값과 비교한다.
+    PartCatalogItem.list_price·list_price_date에는 가장 최근 기준일의 값을 함께 둔다(지금 기준값 계산용).
+    """
+
+    item = models.ForeignKey(PartCatalogItem, verbose_name="단가표 부품", on_delete=models.CASCADE, related_name="list_prices")
+    list_price = models.PositiveIntegerField("단가표 기준단가(원)", null=True, blank=True)
+    effective_date = models.DateField("단가표 기준일")
+
+    class Meta:
+        verbose_name = "단가표 개정 이력"
+        verbose_name_plural = verbose_name
+        ordering = ["item", "effective_date"]
+        constraints = [models.UniqueConstraint(fields=["item", "effective_date"], name="unique_list_price_per_date")]
+
+    def __str__(self):
+        return f"{self.item} {self.effective_date}"
 
 
 class PartPrice(TimeStampedModel):

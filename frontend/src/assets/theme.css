@@ -168,6 +168,8 @@ hr { border-color: var(--line); opacity: 1; }
 .badge { font-weight: 600; border-radius: 999px; padding: 0.35em 0.7em; }
 .badge-soft { background: var(--surface-2); color: var(--muted); }
 .badge-soft-brand { background: var(--brand-soft); color: var(--brand-text); }
+/* 크게 낮음(할인 과다 점검): 글자로 알려 주고 옅은 빨강 바탕으로 눈에 띄게 */
+.badge-low { background: #fdecea; color: #a1281f; border: 1px solid #f3b8b2; font-weight: 600; }
 .progress { background: #eceae5; border-radius: 99px; }
 .progress-bar { background-color: var(--brand); }
 .progress-bar.bg-success { background-color: #1baf7a !important; }

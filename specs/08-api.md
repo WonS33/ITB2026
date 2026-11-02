@@ -70,6 +70,9 @@
 | POST | `/api/service/part-prices/` | 출장지 단가 한 줄 추가 (`catalog_item`, `quote_company`, `unit_price`, `effective_date`, `quote_note`). 부품명은 단가표 품명으로 채움. 같은 부품·업체·날짜는 400 | 서비스 수정 |
 | GET | `/api/service/part-catalog/?q=&category=` | 부품 단가표: 파트넘버·품명 검색, 항목마다 뉴토크 기준값(`standard_price`)과 출장지별 `stats`(count·average·min·max·range), 전체 기본값, 분류 목록, 단가표 기준일 | 서비스 열람 |
 | GET | `/api/service/part-catalog/choices/` | 입력 화면에서 고를 부품 목록(`label` = 파트넘버 품명 (적용 모델)) + 입력된 업체 이름 | 서비스 열람 |
+| GET | `/api/service/part-catalog/export/?q=&category=` | 부품 단가표(5개 기준) 엑셀 내려받기 | 서비스 열람 |
+| GET | `/api/service/part-catalog/companies/export/?category=` | 출장지별 비교 엑셀 (시트1 업체 요약, 시트2 부품별 차이) | 서비스 열람 |
+| GET | `/api/service/part-catalog/companies/?category=` | 출장지(업체)별 비교: 업체마다 뉴토크 기준값 대비 평균 차이율(`average_rate`)·최저·최고, 비쌈·쌈 부품 수, 부품별 차이(`parts`) | 서비스 열람 |
 | GET / PATCH | `/api/service/part-catalog/{id}/` | 부품 하나의 출장지별 단가 목록(기준값 대비 `diff`·`diff_rate`, 비교 기준 여부 `latest`) / 부품별 할인율·추가단가(null이면 기본값) | 조회: 서비스 열람 / 수정: 서비스 수정 |
 | GET / PUT | `/api/service/price-standard/` | 뉴토크 기준값 전체 기본 할인율·추가단가 | 조회: 서비스 열람 / 수정: 서비스 수정 |
 | DELETE | `/api/service/part-prices/{id}/` | 잘못 입력한 단가 한 줄 삭제 | 서비스 수정 |
@@ -83,6 +86,8 @@
 |---|---|---|---|
 | GET | `/api/pricing/products/?exchange_rate=&margin=&option=&base=assembly\|complete` | 기준값(`setting`), 모델별 단계별 금액(`steps`)·기준 판매가 대비 `change`, 옵션·마진 선택 목록·시리즈, 커미션 표(`commissions`). 쿼리 값은 시뮬레이션(저장 안 함), `simulation.active` | 전체(대표·관리자·경영지원팀) |
 | GET | `/api/pricing/commission/?model=&sale_amount=` | 판매금액으로 이익·커미션·커미션 차감 이익·마진율 계산 | 전체 |
+| GET / POST | `/api/pricing/settings/` | 기준값 변경 기록(적용일별, 바뀐 값·사유·입력자) / 기준값 바꾸기(적용일은 지금 적용일 이후 ~ 오늘, 같은 적용일이면 고침) | 전체 |
+| GET | `/api/pricing/access-log/` | 제품 단가·원가 열람 기록 최근 100건 (같은 사람 10분에 한 번) | 전체 |
 
 ## 6. 업로드 (추출 → 확인 → 저장)
 
@@ -118,3 +123,5 @@
 - 2026-11-02: 부품 단가표 API(`part-catalog/`, `part-catalog/choices/`, `part-catalog/{id}/`, `price-standard/`) 추가, 단가 입력에 `catalog_item`·`quote_company` 필수. 견적서 업로드 확인 열 `part_name` → `part_no`
 - 2026-11-02: 제품 단가·원가 API(`/api/pricing/products/`, `/api/pricing/commission/`) 추가
 - 2026-11-02: 업로드 응답에 `update_existing`, 행마다 `update`·`changes`({칸: {old, new}})·`superseded`, 요약에 `update_rows`·`superseded_rows` 추가. 제조내역 확정 저장은 새 행 저장 + 기존 일련번호 갱신(`saved_count`는 합계)
+- 2026-11-02: 출장지별 비교 API `part-catalog/companies/` 추가
+- 2026-11-02: 부품 단가 엑셀 내려받기 2개, 상세·출장지별 비교에 `base_price`·`base_date`(견적 당시 기준값)·`low`(크게 낮음)·`revisions`, `price-standard/`에 `low_alert_rate`, 제품 기준값 `settings/`·열람 기록 `access-log/` 추가

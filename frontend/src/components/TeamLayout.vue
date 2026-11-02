@@ -16,11 +16,11 @@ const current = computed(() => (TEAM_MENUS[team.value] ?? []).flatMap((g) => g.i
     <div class="page-head">
       <div>
         <div class="page-eyebrow">
-          {{ TEAM_LABELS[team] }}
+          {{ route.meta.section === 'prices' ? '단가 · 서비스팀 자료' : TEAM_LABELS[team] }}
           <span v-if="canEdit(team)" class="badge badge-soft-brand ms-1">열람·수정</span>
           <span v-else class="badge badge-soft ms-1">열람만</span>
         </div>
-        <h1 class="page-title">{{ current?.label ?? TEAM_LABELS[team] }}</h1>
+        <h1 class="page-title">{{ current?.label ?? route.meta.title ?? TEAM_LABELS[team] }}</h1>
       </div>
       <!-- 기간 선택(PeriodSelector)이 있는 화면은 여기로 옮겨져 제목 오른쪽에 보인다 -->
       <div id="page-actions" class="page-actions"></div>

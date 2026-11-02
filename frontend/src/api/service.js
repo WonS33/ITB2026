@@ -1,4 +1,4 @@
-import { apiFetch } from './client'
+import { apiFetch, downloadFile } from './client'
 import { periodParams } from '@/period'
 
 export const getServiceDashboard = (period) => apiFetch(`/service/dashboard/?${periodParams(period)}`)
@@ -24,3 +24,11 @@ export const getPartCatalogItem = (id) => apiFetch(`/service/part-catalog/${id}/
 export const setPartCatalogItem = (id, body) => apiFetch(`/service/part-catalog/${id}/`, { method: 'PATCH', body })
 export const getCatalogChoices = () => apiFetch('/service/part-catalog/choices/')
 export const setPriceStandard = (body) => apiFetch('/service/price-standard/', { method: 'PUT', body })
+// 출장지(업체)별 비교: 뉴토크 기준값 대비 평균 차이율 + 업체가 견적한 부품별 차이
+export const getCompanyComparison = (category = '') =>
+  apiFetch(`/service/part-catalog/companies/?category=${encodeURIComponent(category)}`)
+// 엑셀 내려받기: 부품 단가표(화면과 같은 검색 조건) / 출장지별 비교(업체 요약 + 부품별 차이)
+export const downloadPartCatalog = (q = '', category = '') =>
+  downloadFile(`/service/part-catalog/export/?q=${encodeURIComponent(q)}&category=${encodeURIComponent(category)}`, '부품단가.xlsx')
+export const downloadCompanyComparison = (category = '') =>
+  downloadFile(`/service/part-catalog/companies/export/?category=${encodeURIComponent(category)}`, '출장지별단가비교.xlsx')

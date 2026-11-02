@@ -240,6 +240,48 @@ class PartCatalogTests(APITestCase):
         self.assertEqual((dao["diff"], dao["diff_rate"]), (60000, 12.0))  # 기준값 500,000 대비
         self.assertTrue(next(p for p in d["prices"] if p["company"] == "나래")["upcoming"])
 
+    def test_company_comparison(self):
+        from .catalog import company_comparison
+
+        rows = {r["company"]: r for r in company_comparison(today=self.TODAY)["companies"]}
+        self.assertEqual(set(rows), {"가람", "다온"})  # 적용 전 단가만 있는 나래는 빠짐, 기준값 없는 부품도 빠짐
+        self.assertEqual((rows["다온"]["average_rate"], rows["다온"]["above"]), (12.0, 1))  # 560,000 vs 500,000
+        self.assertEqual(rows["가람"]["parts"][0]["unit_price"], 520000)  # 최근 단가만
+        self.assertEqual([r["company"] for r in company_comparison(today=self.TODAY)["companies"]], ["다온", "가람"])
+        self.assertEqual(company_comparison("07 BOARD", today=self.TODAY)["companies"], [])
+
+    def test_compare_with_price_list_of_quote_date(self):
+        """단가표 개정 이력: 견적은 그 당시 단가표 기준값과 비교 (2026-11-02)"""
+        from .catalog import catalog_detail, company_comparison
+        from .models import PartListPrice
+
+        PartListPrice.objects.create(item=self.motor, list_price=400000, effective_date=date(2026, 1, 1))
+        PartListPrice.objects.create(item=self.motor, list_price=500000, effective_date=date(2026, 8, 1))
+        d = catalog_detail(self.motor, today=self.TODAY)
+        dao = next(p for p in d["prices"] if p["company"] == "다온")  # 5/1 견적 → 1/1 단가표 400,000
+        self.assertEqual((dao["base_price"], dao["diff_rate"]), (400000, 40.0))
+        garam = next(p for p in d["prices"] if p["company"] == "가람" and p["latest"])  # 9/1 견적 → 8/1 단가표
+        self.assertEqual((garam["base_price"], garam["diff_rate"]), (500000, 4.0))
+        self.assertEqual([r["list_price"] for r in d["revisions"]], [500000, 400000])  # 최근 기준일부터
+        rows = {r["company"]: r for r in company_comparison(today=self.TODAY)["companies"]}
+        self.assertEqual(rows["다온"]["average_rate"], 40.0)
+
+    def test_low_alert(self):
+        """기준값보다 크게 낮은 견적 표시 (할인 과다 점검)"""
+        from .catalog import catalog_detail, company_comparison
+        from .models import PriceStandard
+
+        PartPrice.objects.create(part_name="Motor", catalog_item=self.motor, quote_company="라온",
+                                 effective_date=date(2026, 10, 1), unit_price=470000)  # 기준값 대비 −6%
+        self.assertFalse(next(p for p in catalog_detail(self.motor, today=self.TODAY)["prices"] if p["company"] == "라온")["low"])
+        standard = PriceStandard.get()
+        standard.low_alert_rate = 5
+        standard.save()
+        raon = next(p for p in catalog_detail(self.motor, today=self.TODAY)["prices"] if p["company"] == "라온")
+        self.assertTrue(raon["low"])
+        result = company_comparison(today=self.TODAY)
+        self.assertEqual((result["low_count"], result["low_alert_rate"]), (1, 5.0))
+
     def login(self, edit):
         self.client.force_authenticate(User.objects.create_user(
             f"u{User.objects.count()}", password="x", role=User.Role.LEADER if edit else User.Role.MEMBER,
@@ -249,6 +291,7 @@ class PartCatalogTests(APITestCase):
         self.login(edit=False)
         self.assertEqual(self.client.get("/api/service/part-catalog/?q=VX-05").status_code, 200)
         self.assertEqual(self.client.get(f"/api/service/part-catalog/{self.motor.id}/").status_code, 200)
+        self.assertEqual(self.client.get("/api/service/part-catalog/companies/").status_code, 200)
         body = {"discount_rate": 5, "extra_price": 1000}
         self.assertEqual(self.client.patch(f"/api/service/part-catalog/{self.motor.id}/", body, format="json").status_code, 403)
         self.assertEqual(self.client.put("/api/service/price-standard/", body, format="json").status_code, 403)
@@ -261,6 +304,13 @@ class PartCatalogTests(APITestCase):
         self.assertFalse(reset.data["custom"])
         self.assertEqual(self.client.put("/api/service/price-standard/", {"discount_rate": 150, "extra_price": 0},
                                          format="json").status_code, 400)
+        res = self.client.put("/api/service/price-standard/", {"discount_rate": 0, "extra_price": 0, "low_alert_rate": 15},
+                              format="json")
+        self.assertEqual(res.data["low_alert_rate"], 15.0)
+        for url in ("/api/service/part-catalog/export/?q=VX", "/api/service/part-catalog/companies/export/"):
+            res = self.client.get(url)
+            self.assertEqual(res.status_code, 200, url)
+            self.assertIn("spreadsheetml", res["Content-Type"])
         choices = self.client.get("/api/service/part-catalog/choices/").data
         self.assertEqual(choices["items"][0]["label"], "VX-05-A-01 Motor (NTI-01 ~ 03)")
         self.assertEqual(choices["companies"], ["가람", "나래", "다온"])
@@ -283,6 +333,15 @@ class PartCatalogTests(APITestCase):
         self.assertEqual((self.motor.list_price, self.motor.discount_rate), (600000, 3))  # 갱신, 부품별 설정은 유지
         self.assertEqual(self.motor.list_price_date, date(2026, 11, 1))  # 기준일을 안 주면 임시 기준일
         self.assertTrue(PartCatalogItem.objects.filter(part_no="VX-05-A-09").exists())
+
+        # 예전 기준일 단가표를 넣어도 지금 기준단가는 가장 최근 기준일 값 그대로, 이력은 둘 다 남음
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8") as f:
+            f.write(content.replace("600,000", "550,000"))
+        call_command("import_part_catalog", f.name, date="2026-06-01", stdout=open(os.devnull, "w"))
+        os.unlink(f.name)
+        self.motor.refresh_from_db()
+        self.assertEqual((self.motor.list_price, self.motor.list_price_date), (600000, date(2026, 11, 1)))
+        self.assertEqual(list(self.motor.list_prices.values_list("list_price", flat=True)), [550000, 600000])
 
 
 class RequesterRegionApiTests(APITestCase):

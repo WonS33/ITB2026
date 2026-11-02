@@ -3,11 +3,19 @@
 // 1) 뉴토크 기준값 = 단가표 기준단가 × (1 − 할인율) + 추가단가
 // 2~5) 출장지(업체)별 단가의 평균·최저·최고·최고−최저 (업체마다 가장 최근 단가 1개)
 // 줄을 누르면 아래에 출장지별 단가 목록과 기준값 대비 차이를 보여 준다
+// 탭 '출장지별 비교': 업체마다 기준값 대비 평균 차이율을 그래프로 (?view=companies)
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { canEdit } from '@/auth'
-import { getPartCatalog, getPartCatalogItem, setPartCatalogItem, setPriceStandard } from '@/api/service'
+import { downloadPartCatalog, getPartCatalog, getPartCatalogItem, setPartCatalogItem, setPriceStandard } from '@/api/service'
+import CompanyPriceCompare from '@/components/service/CompanyPriceCompare.vue'
+import PriceDiffBar from '@/components/service/PriceDiffBar.vue'
 
 const editable = canEdit('service')
+const route = useRoute()
+const router = useRouter()
+const tab = computed(() => (route.query.view === 'companies' ? 'companies' : 'parts'))
+const setTab = (view) => router.replace({ query: view === 'companies' ? { view } : {} })
 const data = ref(null)
 const detail = ref(null)
 const error = ref('')
@@ -46,17 +54,19 @@ const signed = (v) => (v > 0 ? `+${v.toLocaleString()}` : v.toLocaleString())
 const settingText = (rate, extra) => `할인 ${rate}% · 추가 ${extra >= 0 ? '+' : ''}${extra.toLocaleString()}원`
 
 // ── 전체 기본값 수정 (수정 권한자) ──
-const standardForm = reactive({ open: false, discount_rate: 0, extra_price: 0, error: '' })
+const standardForm = reactive({ open: false, discount_rate: 0, extra_price: 0, low_alert_rate: 10, error: '' })
 function openStandard() {
   Object.assign(standardForm, { open: true, error: '', ...{
     discount_rate: data.value.standard.default_discount_rate,
     extra_price: data.value.standard.default_extra_price,
+    low_alert_rate: data.value.standard.low_alert_rate,
   } })
 }
 async function saveStandard() {
   standardForm.error = ''
   try {
-    await setPriceStandard({ discount_rate: Number(standardForm.discount_rate), extra_price: Number(standardForm.extra_price) })
+    await setPriceStandard({ discount_rate: Number(standardForm.discount_rate), extra_price: Number(standardForm.extra_price),
+                             low_alert_rate: Number(standardForm.low_alert_rate) })
     standardForm.open = false
     await load()
     if (detail.value) await open(detail.value.id)
@@ -93,16 +103,51 @@ async function saveItem(useDefault = false) {
 }
 
 const count = computed(() => data.value?.items.length ?? 0)
+
+async function exportExcel() {
+  try {
+    await downloadPartCatalog(filters.q, filters.category)
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
+// 출장지별 비교 탭에서 파트넘버를 누르면 부품별 비교 탭으로 와서 그 부품을 연다
+async function openFromCompany(id) {
+  setTab('parts')
+  await open(id)
+}
+
+// 부품 상세 그래프: 업체마다 가장 최근 단가(비교 기준)의 기준값 대비 차이율
+const detailBars = computed(() =>
+  (detail.value?.prices ?? [])
+    .filter((p) => p.latest && p.diff_rate !== null)
+    .sort((a, b) => b.diff_rate - a.diff_rate)
+    .map((p) => ({ key: p.id, label: p.company, rate: p.diff_rate, detail: `${won(p.unit_price)} (${signed(p.diff)}원)` })))
 </script>
 
 <template>
   <div>
     <div v-if="error" class="alert alert-danger">{{ error }}</div>
 
-    <div class="card mb-3"><div class="card-body">
+    <ul class="nav nav-tabs mb-3">
+      <li class="nav-item">
+        <a href="#" class="nav-link" :class="{ active: tab === 'parts' }" @click.prevent="setTab('parts')">부품별 비교</a>
+      </li>
+      <li class="nav-item">
+        <a href="#" class="nav-link" :class="{ active: tab === 'companies' }" @click.prevent="setTab('companies')">출장지별 비교</a>
+      </li>
+    </ul>
+
+    <CompanyPriceCompare v-if="tab === 'companies'" :categories="data?.categories || []" @open-part="openFromCompany" />
+
+    <div v-show="tab === 'parts'" class="card mb-3"><div class="card-body">
       <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
         <h2 class="h6 mb-0">교체부품 단가 <span class="text-muted fw-normal">· 파트넘버별 기준값과 출장지별 단가 비교</span></h2>
-        <RouterLink v-if="editable" to="/service/part-prices/input" class="btn btn-outline-primary btn-sm">출장지 단가 입력</RouterLink>
+        <div class="d-flex gap-2">
+          <button type="button" class="btn btn-outline-secondary btn-sm" :disabled="!count" @click="exportExcel">엑셀 내려받기</button>
+          <RouterLink v-if="editable" to="/service/part-prices/input" class="btn btn-outline-primary btn-sm">단가 직접 입력</RouterLink>
+        </div>
       </div>
 
       <!-- 검색: 파트넘버(하이픈 없이·숫자만도 가능) 또는 품명 -->
@@ -125,6 +170,7 @@ const count = computed(() => data.value?.items.length ?? 0)
         <span><strong>뉴토크 기준값</strong> = 단가표 기준단가 × (1 − 할인율) + 추가단가</span>
         <span class="text-muted">· 전체 기본값: {{ settingText(data.standard.default_discount_rate, data.standard.default_extra_price) }}</span>
         <span v-if="data.list_price_date" class="text-muted">· 단가표 기준일 {{ data.list_price_date }} (임시)</span>
+        <span class="text-muted">· 크게 낮음 표시: 기준값보다 {{ data.standard.low_alert_rate }}% 이상 낮은 견적 (임시 기준)</span>
         <button v-if="editable && !standardForm.open" type="button" class="btn btn-link btn-sm p-0" @click="openStandard">기본값 수정</button>
         <form v-if="standardForm.open" class="d-flex flex-wrap align-items-center gap-2" @submit.prevent="saveStandard">
           <label class="d-flex align-items-center gap-1">할인율
@@ -132,6 +178,9 @@ const count = computed(() => data.value?.items.length ?? 0)
           </label>
           <label class="d-flex align-items-center gap-1">추가단가
             <input v-model="standardForm.extra_price" type="number" step="1" class="form-control form-control-sm" style="width: 120px" />원
+          </label>
+          <label class="d-flex align-items-center gap-1">크게 낮음 기준
+            <input v-model="standardForm.low_alert_rate" type="number" min="0" max="100" step="0.1" class="form-control form-control-sm" style="width: 80px" />%
           </label>
           <button class="btn btn-primary btn-sm">저장</button>
           <button type="button" class="btn btn-outline-secondary btn-sm" @click="standardForm.open = false">취소</button>
@@ -185,7 +234,7 @@ const count = computed(() => data.value?.items.length ?? 0)
     </div></div>
 
     <!-- 부품 상세: 출장지별 단가 -->
-    <div v-if="detail" class="card mb-3"><div class="card-body">
+    <div v-if="detail && tab === 'parts'" class="card mb-3"><div class="card-body">
       <h2 class="h6 mb-1">{{ detail.part_no }} {{ detail.name }} <span class="text-muted fw-normal small">· {{ detail.category }} · {{ detail.applies_to || '적용 모델 없음' }}</span></h2>
       <div class="d-flex flex-wrap gap-4 small mb-3">
         <span>단가표 기준단가 <strong>{{ won(detail.list_price) }}</strong><span v-if="detail.list_price_date" class="text-muted"> ({{ detail.list_price_date }} 기준)</span></span>
@@ -208,6 +257,19 @@ const count = computed(() => data.value?.items.length ?? 0)
         <span v-if="itemForm.saved" class="text-success">{{ itemForm.saved }}</span>
       </form>
 
+      <!-- 단가표 개정 이력: 예전 견적은 그 당시 단가표 기준값과 비교한다 -->
+      <details v-if="detail.revisions.length" class="small mb-3">
+        <summary class="text-muted">단가표 개정 이력 {{ detail.revisions.length }}건</summary>
+        <table class="table table-sm small mb-0 mt-1 w-auto">
+          <thead><tr><th>단가표 기준일</th><th class="text-end">기준단가</th><th class="text-end">뉴토크 기준값</th></tr></thead>
+          <tbody>
+            <tr v-for="r in detail.revisions" :key="r.effective_date">
+              <td>{{ r.effective_date }}</td><td class="text-end">{{ won(r.list_price) }}</td><td class="text-end">{{ won(r.standard_price) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </details>
+
       <!-- 5개 기준 요약 -->
       <div class="row g-2 mb-3 text-center small">
         <div v-for="[label, value] in [['뉴토크 기준값', detail.standard_price], ['평균', detail.stats.average], ['최저', detail.stats.min], ['최고', detail.stats.max], ['최고−최저', detail.stats.range]]"
@@ -219,12 +281,19 @@ const count = computed(() => data.value?.items.length ?? 0)
         </div>
       </div>
 
-      <p v-if="!detail.prices.length" class="text-muted small mb-0">아직 출장지별 단가가 없습니다. 견적서 업로드나 출장지 단가 입력으로 쌓입니다.</p>
+      <!-- 출장지별 단가 그래프 (비교 기준 단가만) -->
+      <div v-if="detailBars.length" class="mb-3">
+        <div class="small fw-semibold mb-1">출장지별 단가 · 뉴토크 기준값 대비</div>
+        <PriceDiffBar :items="detailBars" />
+      </div>
+
+      <p v-if="!detail.prices.length" class="text-muted small mb-0">아직 출장지별 단가가 없습니다. 견적서 업로드나 단가 직접 입력으로 쌓입니다.</p>
       <div v-else class="table-responsive">
         <table class="table table-sm small mb-0 align-top">
           <thead>
             <tr>
-              <th>출장지(업체)</th><th>적용 시작일</th><th class="text-end">단가</th><th class="text-end">기준값 대비</th>
+              <th>출장지(업체)</th><th>적용 시작일</th><th class="text-end">단가</th>
+              <th class="text-end" title="견적 적용 시작일에 쓰이던 단가표로 계산한 뉴토크 기준값">당시 기준값</th><th class="text-end">기준값 대비</th>
               <th>출처</th><th>사업명</th><th>비고</th>
             </tr>
           </thead>
@@ -236,10 +305,12 @@ const count = computed(() => data.value?.items.length ?? 0)
               </td>
               <td class="text-nowrap">{{ p.effective_date }} <span v-if="p.upcoming" class="badge bg-light text-dark border">예정</span></td>
               <td class="text-end text-nowrap">{{ won(p.unit_price) }}</td>
+              <td class="text-end text-nowrap text-muted">{{ won(p.base_price) }}</td>
               <!-- 차이는 색만으로 구분하지 않고 +/− 기호와 숫자로 -->
               <td class="text-end text-nowrap">
                 <template v-if="p.diff !== null">{{ signed(p.diff) }}원 <span class="text-muted">({{ p.diff_rate > 0 ? '+' : '' }}{{ p.diff_rate }}%)</span></template>
                 <template v-else>-</template>
+                <span v-if="p.low" class="badge badge-low ms-1" :title="`기준값보다 ${detail.low_alert_rate}% 이상 낮음 (할인 과다 점검)`">크게 낮음</span>
               </td>
               <td class="text-nowrap">{{ p.source }}<span v-if="p.quote_no" class="text-muted"> {{ p.quote_no }}</span></td>
               <td>{{ p.project || '-' }}</td>
@@ -248,7 +319,8 @@ const count = computed(() => data.value?.items.length ?? 0)
           </tbody>
         </table>
       </div>
-      <p class="text-muted small mt-2 mb-0">흐린 줄은 같은 업체의 이전 단가(또는 적용 예정)라 평균·최저·최고 계산에서 빠집니다. 견적 단가는 출장 거리·작업 강도에 따라 달라질 수 있어 사업명·비고를 함께 보여 줍니다.</p>
+      <p class="text-muted small mt-2 mb-0">기준값 대비는 견적 적용 시작일에 쓰이던 단가표(당시 기준값)로 계산합니다. "크게 낮음"은 기준값보다 {{ detail.low_alert_rate }}% 이상 낮은 견적입니다.
+        흐린 줄은 같은 업체의 이전 단가(또는 적용 예정)라 평균·최저·최고 계산에서 빠집니다. 견적 단가는 출장 거리·작업 강도에 따라 달라질 수 있어 사업명·비고를 함께 보여 줍니다.</p>
     </div></div>
   </div>
 </template>

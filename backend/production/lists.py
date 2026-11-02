@@ -5,14 +5,10 @@
 - 목록과 엑셀은 같은 걸러내기 함수를 써서 화면에 보이는 것과 내려받는 것이 같다
 """
 
-from io import BytesIO
-from urllib.parse import quote
-
 from django.db.models import Q, Sum
-from django.http import HttpResponse
-from openpyxl import Workbook
-from openpyxl.styles import Font
 from rest_framework.exceptions import ValidationError
+
+from common.excel import excel_response  # noqa: F401 (views에서 lists.excel_response로 씀)
 
 from .models import ManufacturingRecord, SalesOrder, SalesOrderItem
 
@@ -189,33 +185,3 @@ def order_excel_rows(orders):
                 else:
                     row[key] = getattr(o, key)
             yield row
-
-
-# ── 엑셀 파일 ─────────────────────────────────────────────
-
-
-def excel_response(file_name, sheet_title, columns, rows):
-    """columns: [(제목, 키)], rows: 딕셔너리 또는 모델 객체 목록 → .xlsx 내려받기 응답"""
-    wb = Workbook()
-    ws = wb.active
-    ws.title = sheet_title
-    ws.append([title for title, _ in columns])
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-    for row in rows:
-        values = [row.get(key) if isinstance(row, dict) else getattr(row, key) for _, key in columns]
-        # 날짜는 YYYY-MM-DD 글자로 (CLAUDE.md 6절 형식 통일), 빈 값은 빈칸
-        ws.append([v.isoformat() if hasattr(v, "isoformat") else ("" if v is None else v) for v in values])
-    for i, (title, _) in enumerate(columns, start=1):
-        ws.column_dimensions[ws.cell(row=1, column=i).column_letter].width = max(10, len(title) * 2 + 2)
-    ws.freeze_panes = "A2"
-
-    buffer = BytesIO()
-    wb.save(buffer)
-    response = HttpResponse(
-        buffer.getvalue(),
-        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    )
-    # 한글 파일 이름은 filename* (UTF-8) 로 보낸다
-    response["Content-Disposition"] = f"attachment; filename=\"export.xlsx\"; filename*=UTF-8''{quote(file_name)}"
-    return response

@@ -8,6 +8,13 @@ const router = createRouter({
     { path: '/', redirect: () => homePath() },
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
     // 팀 화면: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
+    // 경영지원팀: 지금은 메뉴와 "구현 예정" 안내만 (임시)
+    {
+      path: '/management',
+      component: () => import('@/components/TeamLayout.vue'),
+      meta: { team: 'management' },
+      children: [{ path: '', component: () => import('@/views/management/DashboardView.vue') }],
+    },
     {
       path: '/production',
       component: () => import('@/components/TeamLayout.vue'),
@@ -30,11 +37,12 @@ const router = createRouter({
       children: [
         { path: '', component: () => import('@/views/service/DashboardView.vue') },
         { path: 'reports', component: () => import('@/views/service/ReportsView.vue') },
-        { path: 'part-prices', component: () => import('@/views/service/PartPricesView.vue') },
+        // meta.section 'prices': 왼쪽 메뉴의 '단가' 구역 화면 (권한은 서비스팀 그대로)
+        { path: 'part-prices', component: () => import('@/views/service/PartPricesView.vue'), meta: { section: 'prices', title: '부품 단가' } },
         { path: 'upload', component: () => import('@/views/service/TripUploadView.vue'), meta: { edit: true } },
         { path: 'reports/new', component: () => import('@/views/service/TripReportFormView.vue'), meta: { edit: true } },
-        { path: 'part-prices/input', component: () => import('@/views/service/PartPriceInputView.vue'), meta: { edit: true } },
-        { path: 'upload/quotes', component: () => import('@/views/service/QuoteUploadView.vue'), meta: { edit: true } },
+        { path: 'part-prices/input', component: () => import('@/views/service/PartPriceInputView.vue'), meta: { edit: true, section: 'prices', title: '단가 직접 입력' } },
+        { path: 'upload/quotes', component: () => import('@/views/service/QuoteUploadView.vue'), meta: { edit: true, section: 'prices', title: '견적서 업로드' } },
         { path: 'requester-regions', component: () => import('@/views/service/RequesterRegionsView.vue'), meta: { edit: true } },
         { path: 'uploads', component: () => import('@/views/UploadHistoryView.vue'), meta: { edit: true } },
       ],

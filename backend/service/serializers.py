@@ -45,3 +45,9 @@ class CatalogSettingSerializer(serializers.Serializer):
 
     discount_rate = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, allow_null=True)
     extra_price = serializers.IntegerField(allow_null=True, min_value=-100_000_000, max_value=100_000_000)
+
+
+class StandardSettingSerializer(CatalogSettingSerializer):
+    """전체 기본값 + 크게 낮음 표시 기준(%) — 기준값보다 이 비율 이상 낮은 견적을 표시 (0~100, 생략하면 그대로)"""
+
+    low_alert_rate = serializers.DecimalField(max_digits=5, decimal_places=2, min_value=0, max_value=100, required=False)

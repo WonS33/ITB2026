@@ -1,3 +1,5 @@
+from datetime import date
+
 from django.db import transaction
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
@@ -6,14 +8,15 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from accounts.permissions import TeamPermission
+from common.excel import excel_response, excel_sheets_response
 from common.periods import period_from_params
 
-from .catalog import catalog_choices, catalog_detail, catalog_table
+from .catalog import catalog_choices, catalog_detail, catalog_table, company_comparison
 from .metrics import reports_in, service_summary
 from .models import PartCatalogItem, PartPrice, PriceStandard, RequesterRegion, TripReport
 from .part_prices import part_price_table
 from .regions import DISTRICTS, REGIONS, region_errors
-from .serializers import CatalogSettingSerializer, PartPriceSerializer
+from .serializers import CatalogSettingSerializer, PartPriceSerializer, StandardSettingSerializer
 from .trip_input import clean_report, find_duplicates, save_report, validate_report
 
 
@@ -160,6 +163,52 @@ class PartCatalogListView(ServiceApiView):
         return Response(catalog_table(request.query_params.get("q", ""), request.query_params.get("category", "")))
 
 
+CATALOG_EXCEL_COLUMNS = [
+    ("분류", "category"), ("파트넘버", "part_no"), ("품명", "name"), ("적용 모델", "applies_to"),
+    ("단가표 기준단가", "list_price"), ("단가표 기준일", "list_price_date"), ("할인율(%)", "discount_rate"),
+    ("추가단가", "extra_price"), ("뉴토크 기준값", "standard_price"), ("출장지 평균", "average"), ("출장지 최저", "min"),
+    ("출장지 최고", "max"), ("최고-최저", "range"), ("출장지 수", "count"),
+]
+COMPANY_EXCEL_COLUMNS = [
+    ("출장지(업체)", "company"), ("비교 부품 수", "count"), ("평균 차이율(%)", "average_rate"), ("최저 차이율(%)", "min_rate"),
+    ("최고 차이율(%)", "max_rate"), ("비쌈", "above"), ("쌈", "below"), ("크게 낮음", "low"),
+]
+COMPANY_PART_EXCEL_COLUMNS = [
+    ("출장지(업체)", "company"), ("파트넘버", "part_no"), ("품명", "name"), ("당시 뉴토크 기준값", "base_price"),
+    ("단가표 기준일", "base_date"), ("업체 단가", "unit_price"), ("차이(원)", "diff"), ("차이율(%)", "diff_rate"),
+    ("적용 시작일", "effective_date"), ("크게 낮음", "low_text"),
+]
+
+
+class PartCatalogExportView(ServiceApiView):
+    """GET /api/service/part-catalog/export/?q=&category= — 화면과 같은 조건의 부품 단가표(5개 기준)를 엑셀로"""
+
+    def get(self, request):
+        data = catalog_table(request.query_params.get("q", ""), request.query_params.get("category", ""))
+        rows = [{**i, **i["stats"]} for i in data["items"]]
+        return excel_response(f"부품단가_{date.today().isoformat()}.xlsx", "부품 단가", CATALOG_EXCEL_COLUMNS, rows)
+
+
+class PartCompanyExportView(ServiceApiView):
+    """GET /api/service/part-catalog/companies/export/?category= — 출장지별 비교 (시트1 업체 요약, 시트2 부품별 차이)"""
+
+    def get(self, request):
+        data = company_comparison(request.query_params.get("category", ""))
+        parts = [{**p, "company": c["company"], "low_text": "크게 낮음" if p["low"] else ""}
+                 for c in data["companies"] for p in c["parts"]]
+        return excel_sheets_response(f"출장지별단가비교_{date.today().isoformat()}.xlsx", [
+            ("업체 요약", COMPANY_EXCEL_COLUMNS, data["companies"]),
+            ("부품별 차이", COMPANY_PART_EXCEL_COLUMNS, parts),
+        ])
+
+
+class PartCompanyCompareView(ServiceApiView):
+    """GET /api/service/part-catalog/companies/?category= — 출장지(업체)별 뉴토크 기준값 대비 평균 차이율 + 부품별 차이"""
+
+    def get(self, request):
+        return Response(company_comparison(request.query_params.get("category", "")))
+
+
 class PartCatalogChoicesView(ServiceApiView):
     """GET /api/service/part-catalog/choices/ — 단가 입력 화면에서 고를 부품 목록 + 이미 입력된 업체(출장지) 이름"""
 
@@ -187,18 +236,21 @@ class PartCatalogDetailView(ServiceApiView):
 
 
 class PriceStandardView(ServiceApiView):
-    """GET/PUT /api/service/price-standard/ — 뉴토크 기준값 전체 기본 할인율·추가단가 (PUT은 서비스 수정 권한)"""
+    """GET/PUT /api/service/price-standard/ — 뉴토크 기준값 전체 기본 할인율·추가단가·크게 낮음 표시 기준 (PUT은 서비스 수정 권한)"""
 
     def get(self, request):
         standard = PriceStandard.get()
-        return Response({"discount_rate": float(standard.default_discount_rate), "extra_price": standard.default_extra_price})
+        return Response({"discount_rate": float(standard.default_discount_rate), "extra_price": standard.default_extra_price,
+                         "low_alert_rate": float(standard.low_alert_rate)})
 
     def put(self, request):
-        serializer = CatalogSettingSerializer(data=request.data)
+        serializer = StandardSettingSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         standard = PriceStandard.get()
         standard.default_discount_rate = serializer.validated_data["discount_rate"] or 0
         standard.default_extra_price = serializer.validated_data["extra_price"] or 0
+        if "low_alert_rate" in serializer.validated_data:
+            standard.low_alert_rate = serializer.validated_data["low_alert_rate"]
         standard.save()
         return self.get(request)
 
