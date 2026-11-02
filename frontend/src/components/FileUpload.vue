@@ -44,7 +44,8 @@ function finish(text) {
 }
 
 function onSaved(result) {
-  finish(`${result.saved_count}행을 저장했습니다.`)
+  const updated = result.update_existing ? result.summary.update_rows : 0
+  finish(updated ? `${result.saved_count}행을 저장했습니다 (새로 ${result.saved_count - updated} · 갱신 ${updated}).` : `${result.saved_count}행을 저장했습니다.`)
   refreshYearRange() // 이전 연도 자료를 올렸으면 기간 선택의 연도 목록에 바로 나타나게
   emit('saved')
 }

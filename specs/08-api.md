@@ -117,3 +117,4 @@
 - 2026-10-27: 생산팀 대시보드에 `compare` 파라미터와 `compare`·`delivery`·`unshipped`, 월별 `orders`·`last_year` 추가
 - 2026-11-02: 부품 단가표 API(`part-catalog/`, `part-catalog/choices/`, `part-catalog/{id}/`, `price-standard/`) 추가, 단가 입력에 `catalog_item`·`quote_company` 필수. 견적서 업로드 확인 열 `part_name` → `part_no`
 - 2026-11-02: 제품 단가·원가 API(`/api/pricing/products/`, `/api/pricing/commission/`) 추가
+- 2026-11-02: 업로드 응답에 `update_existing`, 행마다 `update`·`changes`({칸: {old, new}})·`superseded`, 요약에 `update_rows`·`superseded_rows` 추가. 제조내역 확정 저장은 새 행 저장 + 기존 일련번호 갱신(`saved_count`는 합계)

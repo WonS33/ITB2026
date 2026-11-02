@@ -2,6 +2,7 @@
 // 업로드 확인·수정 표 (specs/03-common.md 4절 ③④⑤)
 // - 오류 칸은 빨간색 + 메시지, 이미 저장된 번호는 "중복(건너뜀)", 행마다 "제외" 선택
 // - 출장보고서처럼 기준이 고유 번호가 아닌 종류는 중복 행에 "중복 아님 — 저장" 체크칸을 보여준다
+// - 제조내역처럼 최신 업로드 기준(update_existing)인 종류는 이미 있는 번호를 "갱신"으로 보여 주고 바뀐 칸(이전 → 새 값)을 적는다
 // - [다시 검사]: 고친 값을 서버에 보내 다시 검사 / [저장]: 고친 값 반영 후 최종 저장
 import { reactive, ref, watch } from 'vue'
 import { cancelBatch, confirmBatch, updateBatch } from '@/api/uploads'
@@ -85,9 +86,14 @@ const cancel = () =>
     emit('cancelled', await cancelBatch(props.batch.id))
   })
 
+// 바뀐 칸 이름 (열 제목)
+const labelOf = (key) => props.batch.columns.find((c) => c.key === key)?.label ?? key
+
 function rowClass(row) {
   if (drafts[row.id].excluded) return 'table-secondary text-muted'
+  if (row.superseded) return 'table-secondary text-muted'
   if (row.duplicate) return 'table-warning'
+  if (row.update && !Object.keys(row.errors).length) return 'table-info'
   if (Object.keys(row.errors).length) return 'table-danger'
   return ''
 }
@@ -98,9 +104,13 @@ function rowClass(row) {
     <div class="card-body">
       <div class="d-flex flex-wrap gap-3 align-items-center mb-2">
         <strong>{{ batch.file_name }}</strong>
-        <span class="badge bg-primary">저장 예정 {{ batch.summary.to_save }}행</span>
+        <span class="badge bg-primary">
+          저장 예정 {{ batch.summary.to_save }}행<template v-if="batch.update_existing"> (새로 {{ batch.summary.to_save - batch.summary.update_rows }} · 갱신 {{ batch.summary.update_rows }})</template>
+        </span>
         <span class="badge bg-danger">오류 {{ batch.summary.error_rows }}행</span>
-        <span class="badge bg-warning text-dark">중복(건너뜀) {{ batch.summary.duplicate_rows }}행</span>
+        <span class="badge bg-warning text-dark">
+          {{ batch.update_existing ? '건너뜀' : '중복(건너뜀)' }} {{ batch.summary.duplicate_rows }}행<template v-if="batch.summary.superseded_rows"> (파일 아래 행으로 대체 {{ batch.summary.superseded_rows }})</template>
+        </span>
         <span class="badge bg-secondary">제외 {{ batch.summary.excluded_rows }}행</span>
         <span v-if="batch.summary.skipped_rows" class="text-muted small">
           ※ 일련번호가 없는 행 {{ batch.summary.skipped_rows }}개는 추출 단계에서 제외했습니다.
@@ -123,9 +133,17 @@ function rowClass(row) {
               <td class="text-nowrap">{{ row.row_no }}</td>
               <td class="text-nowrap">
                 <span v-if="drafts[row.id].excluded">제외</span>
+                <span v-else-if="row.superseded" title="같은 번호가 파일 아래쪽에 다시 나와 마지막 행을 씁니다">아래 행으로 대체</span>
                 <span v-else-if="Object.keys(row.errors).length" class="text-danger">오류</span>
-                <span v-else-if="row.duplicate">이미 저장됨</span>
-                <span v-else class="text-success">정상</span>
+                <span v-else-if="row.duplicate">{{ batch.update_existing ? '변경 없음(건너뜀)' : '이미 저장됨' }}</span>
+                <template v-else-if="row.update">
+                  <span class="fw-semibold">갱신</span>
+                  <!-- 바뀐 칸: 이전 값 → 새 값 (빈 값은 "빈칸") -->
+                  <ul class="list-unstyled mb-0 mt-1 changes">
+                    <li v-for="(c, key) in row.changes" :key="key">{{ labelOf(key) }}: {{ c.old || '빈칸' }} → <strong>{{ c.new || '빈칸' }}</strong></li>
+                  </ul>
+                </template>
+                <span v-else class="text-success">{{ batch.update_existing ? '새로 저장' : '정상' }}</span>
                 <!-- 같은 날 같은 곳에 실제로 두 번 간 경우: 사람이 확인하고 저장 -->
                 <label
                   v-if="batch.allow_duplicate_override && !drafts[row.id].excluded && (row.matches_existing || row.in_file_duplicate)"
@@ -195,9 +213,21 @@ function rowClass(row) {
         <button class="btn btn-outline-secondary btn-sm ms-auto" :disabled="busy" @click="cancel">업로드 취소</button>
       </div>
       <p class="text-muted small mt-2 mb-0">
-        값을 고친 뒤 [다시 검사]로 확인하세요. 이미 저장된 번호(노란색)는 저장할 때 자동으로 건너뜁니다.
+        값을 고친 뒤 [다시 검사]로 확인하세요.
+        <template v-if="batch.update_existing">
+          이미 저장된 번호는 <strong>새로 올린 값으로 갱신</strong>합니다(파란색, 바뀐 칸 표시). 바뀐 값이 없으면 건너뜁니다(노란색).
+          같은 번호가 파일에 여러 번 있으면 마지막 행만 씁니다.
+        </template>
+        <template v-else>이미 저장된 번호(노란색)는 저장할 때 자동으로 건너뜁니다.</template>
         <template v-if="batch.allow_duplicate_override">같은 날 같은 곳에 실제로 두 번 출장 갔다면 "중복 아님 — 저장"을 체크하세요.</template>
       </p>
     </div>
   </div>
 </template>
+
+<style scoped>
+.changes {
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+</style>

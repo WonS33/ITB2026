@@ -12,7 +12,7 @@ const saved = ref(false)
       kind="manufacturing_excel"
       title="제조내역 엑셀 업로드"
       accept=".xlsx"
-      help="제조내역 엑셀(.xlsx)을 올리면 추출 결과를 먼저 보여줍니다. 확인·수정한 뒤 [저장]을 눌러야 반영됩니다. 이미 저장된 일련번호는 건너뜁니다."
+      help="제조내역 엑셀(.xlsx)을 올리면 추출 결과를 먼저 보여줍니다. 확인·수정한 뒤 [저장]을 눌러야 반영됩니다. 이미 저장된 일련번호는 새로 올린 값으로 갱신하고(최신 기준), 같은 일련번호가 파일에 여러 번 있으면 마지막 행을 씁니다."
       @saved="saved = true"
     />
     <p v-if="saved" class="small">

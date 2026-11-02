@@ -86,9 +86,42 @@ class UploadFlowTests(APITestCase):
         first = self.upload()
         self.client.post(f"/api/uploads/{first.data['id']}/confirm/")
         second = self.upload()
-        self.assertEqual(second.data["summary"]["duplicate_rows"], 2)
+        self.assertEqual(second.data["summary"]["duplicate_rows"], 2)  # 값이 같으면 건너뜀
         self.assertEqual(second.data["summary"]["to_save"], 0)
         self.client.post(f"/api/uploads/{second.data['id']}/confirm/")
+        self.assertEqual(ManufacturingRecord.objects.count(), 2)
+
+    def test_existing_serial_is_updated_with_latest_values(self):
+        """같은 일련번호가 다시 올라오면 최신 값으로 갱신 (2026-11-02)"""
+        self.login()
+        first = self.upload()
+        self.client.post(f"/api/uploads/{first.data['id']}/confirm/")
+        changed = [{**ROWS[0], "shipped": date(2026, 1, 20), "note": "출고 반영"}, ROWS[1]]
+        res = self.upload(excel_file(changed))
+        rows = {r["values"]["serial_full"]: r for r in res.data["rows"]}
+        updated = rows["N82260001"]
+        self.assertTrue(updated["update"])
+        self.assertEqual(updated["changes"]["shipped_date"], {"old": "", "new": "2026-01-20"})
+        self.assertEqual(updated["changes"]["note"], {"old": "", "new": "출고 반영"})
+        self.assertTrue(rows["N82260002"]["duplicate"])  # 바뀐 값 없음 → 건너뜀
+        self.assertEqual((res.data["summary"]["to_save"], res.data["summary"]["update_rows"]), (1, 1))
+        saved = self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
+        self.assertEqual(saved.data["saved_count"], 1)
+        record = ManufacturingRecord.objects.get(serial_full="N82260001")
+        self.assertEqual((record.shipped_date, record.note), (date(2026, 1, 20), "출고 반영"))
+        self.assertEqual(ManufacturingRecord.objects.count(), 2)  # 새로 늘지 않음
+
+    def test_same_serial_twice_in_file_uses_last_row(self):
+        self.login()
+        rows = [ROWS[0], {**ROWS[0], "note": "나중 행"}, ROWS[1]]
+        res = self.upload(excel_file(rows))
+        first, last = [r for r in res.data["rows"] if r["values"]["serial_full"] == "N82260001"]
+        self.assertTrue(first["superseded"] and first["duplicate"])
+        self.assertFalse(first["errors"])  # 오류가 아니라 자동으로 건너뜀
+        self.assertFalse(last["superseded"])
+        self.assertEqual((res.data["summary"]["to_save"], res.data["summary"]["superseded_rows"]), (2, 1))
+        self.client.post(f"/api/uploads/{res.data['id']}/confirm/")
+        self.assertEqual(ManufacturingRecord.objects.get(serial_full="N82260001").note, "나중 행")
         self.assertEqual(ManufacturingRecord.objects.count(), 2)
 
     def test_fix_error_then_save(self):
@@ -121,7 +154,8 @@ class UploadFlowTests(APITestCase):
     def test_duplicate_inside_file(self):
         self.login()
         res = self.upload(excel_file([ROWS[0], ROWS[0]]))
-        self.assertEqual(res.data["summary"]["error_rows"], 1)
+        # 제조내역은 오류가 아니라 마지막 행만 저장 (2026-11-02, 최신 업로드 기준)
+        self.assertEqual((res.data["summary"]["error_rows"], res.data["summary"]["to_save"]), (0, 1))
 
     def test_cancel_and_processed_batch(self):
         self.login()

@@ -102,6 +102,7 @@ class ManufacturingExcelHandler(UploadHandler):
     team = "production"
     allowed_extensions = (".xlsx",)
     key_field = "serial_full"
+    update_existing = True  # 같은 일련번호가 다시 올라오면 최신 값으로 갱신 (2026-11-02 사용자 요청)
     columns = [
         ("serial_full", "일련번호"),
         ("model_name", "모델명"),
@@ -219,12 +220,39 @@ class ManufacturingExcelHandler(UploadHandler):
     def existing_keys(self, keys):
         return set(ManufacturingRecord.objects.filter(serial_full__in=keys).values_list("serial_full", flat=True))
 
+    def existing_values(self, keys):
+        """이미 저장된 일련번호의 지금 값 (확인 화면과 같은 글자 모양: 날짜 YYYY-MM-DD, 빈 값 '')"""
+        result = {}
+        for record in ManufacturingRecord.objects.filter(serial_full__in=keys):
+            values = {}
+            for key, *_ in self.columns:
+                value = getattr(record, key)
+                values[key] = value.isoformat() if hasattr(value, "isoformat") else (value or "")
+            result[record.serial_full] = values
+        return result
+
+    def _clean(self, row):
+        v = {k: (val or "").strip() for k, val in row["values"].items()}
+        for field in DATE_FIELDS:
+            v[field] = parse_iso_date(v[field])
+        return v
+
+    def update(self, rows, user):
+        """이미 있는 일련번호를 새로 올린 값으로 고친다 (최신 업로드 기준, 처음 입력자는 그대로)"""
+        for row in rows:
+            v = self._clean(row)
+            record = ManufacturingRecord.objects.get(serial_full=v["serial_full"])
+            for key, *_ in self.columns:
+                setattr(record, key, v[key])
+            record.serial_short = v["serial_full"][-4:]
+            record.source_sheet = row.get("sheet", "")
+            record.save()
+        return len(rows)
+
     def save(self, rows, user):
         records = []
         for row in rows:
-            v = {k: (val or "").strip() for k, val in row["values"].items()}
-            for field in DATE_FIELDS:
-                v[field] = parse_iso_date(v[field])
+            v = self._clean(row)
             records.append(
                 ManufacturingRecord(
                     **{k: v[k] for k, *_ in self.columns},

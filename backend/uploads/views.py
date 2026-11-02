@@ -46,6 +46,7 @@ def _batch_data(batch):
         "summary": summarize(data.get("rows", []), data.get("skipped_count", 0)),
         "saved_count": batch.saved_count,
         "allow_duplicate_override": HANDLERS[batch.kind].allow_duplicate_override,
+        "update_existing": HANDLERS[batch.kind].update_existing,
     }
 
 
@@ -177,7 +178,12 @@ class UploadConfirmView(UploadBatchMixin, APIView):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             to_save = [r for r in rows if not r["excluded"] and not r["duplicate"]]
-            batch.saved_count = handler.save(to_save, request.user)
+            # 최신 업로드 기준 종류: 이미 있는 번호는 새 값으로 갱신, 나머지는 새로 저장
+            updates = [r for r in to_save if r.get("update")]
+            new_rows = [r for r in to_save if not r.get("update")]
+            batch.saved_count = handler.save(new_rows, request.user)
+            if updates:
+                batch.saved_count += handler.update(updates, request.user)
             batch.status = UploadBatch.Status.SAVED
             batch.save()
         return Response(_batch_data(batch))
