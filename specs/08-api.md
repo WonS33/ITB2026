@@ -37,7 +37,11 @@
 | 메서드 | 주소 | 기능 | 권한 |
 |---|---|---|---|
 | GET / PUT | `/api/management/targets/{year}/` | 연간 목표매출 조회·입력 | 조회·입력: 전체 |
-| GET / PUT | `/api/management/monthly/{year}/{month}/` | 월별 실적 조회·입력 | 조회·입력: 전체 |
+| GET / PUT | `/api/management/monthly/{year}/{month}/` | 월별 실적 조회·저장. PUT `intent`: `draft`(임시저장) / `confirm`(확정) / `update_confirmed`(확정된 달 수정). 응답에 `status`(new·draft·confirmed), `month_state`(future·current·closed), `abilities`(가능한 버튼), `previous`(전월 값) | 조회·입력: 전체 |
+| POST | `/api/management/monthly/{year}/{month}/unconfirm/` | 확정 취소 (확정 → 임시저장) | 전체 |
+| GET | `/api/management/monthly/{year}/{month}/ledger/` | [경영지원 관리에서 불러오기]용 그 달 장부 행 (외상매출금·숨긴 행 제외, 읽기만). 입력할 수 없는 달은 403 | 전체 |
+| GET | `/api/management/monthly/export/?year=&period=month\|quarter\|year&month=&quarter=` | 월간 입력 엑셀 (.xlsx). 분기·연간은 합계 시트(확정된 달만) + 월 시트. 이번 달까지만, 미래 기간은 400 | 전체 |
+| GET | `/api/management/history/?from=&to=&actor=&screen=&action=&q=&page=` | 변경 이력 (최근부터 50건씩, 기본 최근 30일) | 전체 |
 | GET | `/api/management/dashboard/` | 메인 화면 집계(달성률, 매출 구성, 산업 분야·제품 비중, 매입·지출 추이, 미수금, 간이 지표) | 전체 |
 | POST | `/api/management/ai-comment/` | AI 분석 코멘트 생성 (선택, 기업 허용 확인 후) | 전체 |
 
@@ -125,3 +129,5 @@
 - 2026-11-02: 업로드 응답에 `update_existing`, 행마다 `update`·`changes`({칸: {old, new}})·`superseded`, 요약에 `update_rows`·`superseded_rows` 추가. 제조내역 확정 저장은 새 행 저장 + 기존 일련번호 갱신(`saved_count`는 합계)
 - 2026-11-02: 출장지별 비교 API `part-catalog/companies/` 추가
 - 2026-11-02: 부품 단가 엑셀 내려받기 2개, 상세·출장지별 비교에 `base_price`·`base_date`(견적 당시 기준값)·`low`(크게 낮음)·`revisions`, `price-standard/`에 `low_alert_rate`, 제품 기준값 `settings/`·열람 기록 `access-log/` 추가
+- 2026-11-04: 월간 입력 API 구현(`backend/management/`). 미래 달 저장 불가, 이번 달은 임시저장만, 지난 달은 확정까지 — 규칙을 어기면 403
+- 2026-11-04: 월간 입력 PUT·확정 취소에 `expected_updated_at` 필수 — 화면을 불러온 뒤 다른 저장이 있었으면 409(동시 수정). 장부 불러오기·엑셀·변경 이력 API 추가

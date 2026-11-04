@@ -55,6 +55,7 @@ INSTALLED_APPS = [
     'service',
     'uploads',
     'pricing',
+    'management',
 ]
 
 MIDDLEWARE = [

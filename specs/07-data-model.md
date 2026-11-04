@@ -34,7 +34,9 @@
 | `year` (unique) | 연도 |
 | `target_amount` | 연간 목표매출액(원) |
 
-### MonthlyFinance — 월별 실적
+### MonthlyFinance — 월별 실적 (구현: `backend/management/models.py`, 2026-11-04)
+
+조원 저장소(yeonk-rgb/newtork-dashboard)의 `management.prisma`를 옮김. 임시저장·확정 두 상태가 있고 **대시보드에는 확정된 달만** 반영한다.
 
 | 필드 | 설명 |
 |---|---|
@@ -45,8 +47,51 @@
 | `merchandise_purchase` | 상품 매입액 |
 | `material_purchase` | 원재료 매입액 |
 | `expense` | 경비 지출액 |
-| `other_expense` | 그 외 지출액(광고선전비, 접대비 등) |
-| `receivables` | 미수금 통계 (형식 확인 필요 → 우선 월 합계 금액) |
+| `cash_balance` | 월말 통장 잔액 (선택, 비우면 null — 0원과 다름. 합계에 넣지 않음) |
+| `status` | `draft`(임시저장) / `confirmed`(확정) |
+| `confirmed_at`, `updated_by` | 확정 일시, 마지막 수정자 |
+
+### ExpenseCategory — "그 외 지출" 항목
+
+| 필드 | 설명 |
+|---|---|
+| `name` (unique) | 항목 이름 (예: 광고선전비, 접대비) |
+| `cost_type` | `fixed`(고정비) / `variable`(변동비) / 빈 값(미분류) |
+| `is_active` | False면 새 입력 화면에서 숨김 (과거 금액은 유지) |
+| `sort_order` | 화면 순서 |
+
+### OtherExpense — 월별 "그 외 지출" 금액
+
+| 필드 | 설명 |
+|---|---|
+| `monthly` → MonthlyFinance, `category` → ExpenseCategory (함께 unique) | 어느 달의 어느 항목 |
+| `amount` | 금액 |
+
+### LedgerEntry — 경영지원 관리 장부 (2026-11-04)
+
+고객사 「경영지원_관리」 엑셀의 블록 4개(외상매출금·외상매입금·미지급비용-직원·미지급비용-업체)를 기준년월·거래처별로 저장. 금액은 부가세 포함.
+
+| 필드 | 설명 |
+|---|---|
+| `year`, `month`, `kind` | 기준년월, 구분 (`ar`·`ap`·`accrued_staff`·`accrued_vendor`) |
+| `ar_status` / `purchase_type` / `expense_type`, `auto_transfer` | 구분마다 쓰는 칸 (외상매출금 상태, 외상매입금 매입유형, 업체 비용유형·자동이체) |
+| `partner_code`, `partner_name`, `amount`, `note` | 거래처코드(외상매출금), 거래처명, 잔액, 적요 |
+| `due_on`, `settled_on`, `deleted_at` | 예정일, 완료일, 숨긴 일시(삭제 대신) |
+
+- 지금은 월간 입력의 [경영지원 관리에서 불러오기]만 읽는다. 장부 화면은 아직 없음(가상 데이터·Django 관리 화면).
+
+### AuditLog — 변경 기록 (2026-11-04)
+
+| 필드 | 설명 |
+|---|---|
+| `occurred_at`, `actor`, `actor_username` | 언제, 누가 (사용자를 지워도 남도록 그때 아이디도 저장) |
+| `screen`, `action` | 어느 화면(`entry`·`entry-export`), 무엇을(`CONFIRM`·`UPDATE_CONFIRMED`·`UNCONFIRM`·`EXPORT`) |
+| `target_type`, `target_id`, `target_label` | 대상 (예: "2026년 10월 월간 입력") |
+| `changes`, `meta` | 바뀐 칸 [{field, label, before, after}] (화면 표기 그대로), 추가 정보(다운로드 기간·파일 이름) |
+
+- 한 번 넣은 기록은 고치거나 지울 수 없다(모델 `save`·`delete`에서 막음, 관리 화면도 보기만). 비밀번호·토큰 같은 칸 이름은 기록하지 않는다.
+
+- 처음 설계의 `other_expense`(합계 1개)는 항목별 표(ExpenseCategory·OtherExpense)로, `receivables`(월 합계)는 미수금 단계에서 따로 만든다.
 
 ## 3. 생산팀
 
@@ -236,3 +281,5 @@
 - 2026-11-02: PartCatalogItem·PriceStandard 추가, PartPrice·QuotePartAlias에 `catalog_item` 추가. PartPrice 중복 기준을 "부품 + 업체 + 날짜"로 변경
 - 2026-11-02: pricing 앱(ProductPriceSetting·ProductModel·ProductOption) 추가
 - 2026-11-02: PartListPrice(단가표 개정 이력, 기존 값은 첫 이력으로 옮김), PriceStandard.`low_alert_rate`, ProductPriceSetting.`note`, PricingAccessLog 추가(사용자 요청, 2순위 개선)
+- 2026-11-04: 경영지원팀 MonthlyFinance 구현 — 조원 저장소 설계를 따라 `status`(임시저장·확정)·`cash_balance` 추가, 그 외 지출을 ExpenseCategory·OtherExpense로 나눔, `receivables`는 미수금 단계로 미룸 (사용자 결정: 조원 경영지원팀 기능 옮기기)
+- 2026-11-04: LedgerEntry(경영지원 관리 장부)·AuditLog(변경 기록) 추가 — 조원 저장소 설계를 따름 (사용자 요청)

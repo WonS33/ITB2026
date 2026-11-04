@@ -8,12 +8,16 @@ const router = createRouter({
     { path: '/', redirect: () => homePath() },
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
     // 팀 화면: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
-    // 경영지원팀: 지금은 메뉴와 "구현 예정" 안내만 (임시)
+    // 경영지원팀 (조원 저장소 기능을 옮기는 중 — 대시보드는 아직 "구현 예정")
     {
       path: '/management',
       component: () => import('@/components/TeamLayout.vue'),
       meta: { team: 'management' },
-      children: [{ path: '', component: () => import('@/views/management/DashboardView.vue') }],
+      children: [
+        { path: '', component: () => import('@/views/management/DashboardView.vue') },
+        { path: 'entry', component: () => import('@/views/management/EntryView.vue'), meta: { edit: true } },
+        { path: 'history', component: () => import('@/views/management/HistoryView.vue') },
+      ],
     },
     {
       path: '/production',
