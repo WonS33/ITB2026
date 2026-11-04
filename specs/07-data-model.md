@@ -27,12 +27,15 @@
 
 ## 2. 경영지원팀
 
-### AnnualSalesTarget — 연간 목표매출
+### AnnualSalesTarget — 연간 목표매출 (구현 2026-11-04)
 
 | 필드 | 설명 |
 |---|---|
 | `year` (unique) | 연도 |
-| `target_amount` | 연간 목표매출액(원) |
+| `target_amount` | 연간 목표매출액(원, 0원 초과) |
+| `q1_target` ~ `q4_target` | 분기 목표 (선택, 비우면 null = 자동 배분: (연간 − 입력한 분기 합) ÷ 빈 분기 수, 나머지 원은 마지막 빈 분기에) |
+| `headcount` | 직원 수 (선택, 인당 생산성용) |
+| `updated_by` | 마지막 수정자 |
 
 ### MonthlyFinance — 월별 실적 (구현: `backend/management/models.py`, 2026-11-04)
 
@@ -59,6 +62,7 @@
 | `cost_type` | `fixed`(고정비) / `variable`(변동비) / 빈 값(미분류) |
 | `is_active` | False면 새 입력 화면에서 숨김 (과거 금액은 유지) |
 | `sort_order` | 화면 순서 |
+| `updated_at` | 수정 시각 (항목 목록 동시 수정 확인용) |
 
 ### OtherExpense — 월별 "그 외 지출" 금액
 
@@ -283,3 +287,4 @@
 - 2026-11-02: PartListPrice(단가표 개정 이력, 기존 값은 첫 이력으로 옮김), PriceStandard.`low_alert_rate`, ProductPriceSetting.`note`, PricingAccessLog 추가(사용자 요청, 2순위 개선)
 - 2026-11-04: 경영지원팀 MonthlyFinance 구현 — 조원 저장소 설계를 따라 `status`(임시저장·확정)·`cash_balance` 추가, 그 외 지출을 ExpenseCategory·OtherExpense로 나눔, `receivables`는 미수금 단계로 미룸 (사용자 결정: 조원 경영지원팀 기능 옮기기)
 - 2026-11-04: LedgerEntry(경영지원 관리 장부)·AuditLog(변경 기록) 추가 — 조원 저장소 설계를 따름 (사용자 요청)
+- 2026-11-04: AnnualSalesTarget에 분기 목표(`q1_target`~`q4_target`, 선택)·`headcount`(선택) 추가, ExpenseCategory에 `updated_at` 추가 — 조원 저장소 설계를 따름(목표·항목 설정 3단계)

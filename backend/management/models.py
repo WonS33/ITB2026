@@ -12,6 +12,42 @@ from django.utils import timezone
 from common.models import TimeStampedModel
 
 
+class AnnualSalesTarget(TimeStampedModel):
+    """연간 목표매출 (연도마다 한 줄)
+
+    분기 목표는 선택: 비어 있는 분기 = (연간 − 입력한 분기 합) ÷ 빈 분기 수, 나머지 원은 마지막 빈 분기에 (targets.py)
+    """
+
+    year = models.PositiveSmallIntegerField("연도", unique=True)
+    target_amount = models.PositiveBigIntegerField("연간 목표매출액")
+    q1_target = models.PositiveBigIntegerField("1분기 목표", null=True, blank=True)
+    q2_target = models.PositiveBigIntegerField("2분기 목표", null=True, blank=True)
+    q3_target = models.PositiveBigIntegerField("3분기 목표", null=True, blank=True)
+    q4_target = models.PositiveBigIntegerField("4분기 목표", null=True, blank=True)
+    # 직원 수 (선택) — 인당 생산성(매출 ÷ 인원) 계산용
+    headcount = models.PositiveSmallIntegerField("직원 수", null=True, blank=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        verbose_name="마지막 수정자",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+
+    class Meta:
+        verbose_name = "연간 목표매출"
+        verbose_name_plural = verbose_name
+        ordering = ["year"]
+
+    def __str__(self):
+        return f"{self.year}년 목표 {self.target_amount:,}원"
+
+    @property
+    def quarter_targets(self):
+        return [self.q1_target, self.q2_target, self.q3_target, self.q4_target]
+
+
 class MonthlyFinance(TimeStampedModel):
     """월별 실적 (연도+월 하나에 한 줄)"""
 
@@ -64,6 +100,7 @@ class ExpenseCategory(models.Model):
     # False면 새 입력 화면에서 숨김 (과거 데이터는 그대로)
     is_active = models.BooleanField("사용 중", default=True)
     sort_order = models.PositiveSmallIntegerField("순서", default=0)
+    updated_at = models.DateTimeField("수정일", auto_now=True)  # 동시 수정 확인용
 
     class Meta:
         verbose_name = "그 외 지출 항목"

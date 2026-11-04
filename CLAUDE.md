@@ -95,7 +95,7 @@ python manage.py seed_production                            # 가상 제조내�
 python manage.py seed_production --year 2025 --target 280   # 다른 연도 가상 데이터 (일련번호 4자리 중복 검색 시연용)
 python manage.py make_sample_files                          # 시연용 가상 업로드 파일 → backend/sample_data/
 python manage.py seed_service                               # 가상 출장보고서 (--year 2025 로 다른 연도)
-python manage.py seed_management                             # 가상 경영지원 데이터 (그 외 지출 항목 + 지난달까지 24개월 월별 실적 + 최근 3개월 장부)
+python manage.py seed_management                             # 가상 경영지원 데이터 (최근 3년 연간 목표 + 그 외 지출 항목 + 지난달까지 24개월 월별 실적 + 최근 3개월 장부)
 python manage.py seed_part_prices                           # 가상 부품 단가표·업체별 단가 (단가표가 있으면 건너뜀, 배포 서버용)
 python manage.py import_part_catalog "../samples/부품 및 단가리스트_부품.csv"   # 실제 부품 단가표 → 로컬 DB에만 (대외비)
 python manage.py import_product_prices --product "../samples/부품 및 단가리스트_제품.csv" --data "../samples/부품 및 단가리스트_data.csv" --commission "../samples/부품 및 단가리스트_커미션.csv"   # 실제 제품 가격 계산표 → 로컬 DB에만 (검산 후 저장)

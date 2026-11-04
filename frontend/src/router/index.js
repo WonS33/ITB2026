@@ -17,6 +17,7 @@ const router = createRouter({
         { path: '', component: () => import('@/views/management/DashboardView.vue') },
         { path: 'entry', component: () => import('@/views/management/EntryView.vue'), meta: { edit: true } },
         { path: 'history', component: () => import('@/views/management/HistoryView.vue') },
+        { path: 'settings', component: () => import('@/views/management/SettingsView.vue'), meta: { edit: true } },
       ],
     },
     {

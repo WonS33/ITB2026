@@ -244,3 +244,102 @@ class ExportTests(EntryTestCase):
     def test_future_period_rejected(self, *_):
         res = self.client.get("/api/management/monthly/export/?year=2027&period=year")
         self.assertEqual(res.status_code, 400)
+
+
+class AllocationTests(APITestCase):
+    """분기·월 목표 배분 (조원 저장소 targets.ts 규칙)"""
+
+    def test_empty_quarters_split_with_rest_on_last(self):
+        from .targets import allocate_month_targets, allocate_quarter_targets
+
+        r = allocate_quarter_targets(1000, [None, None, None, None])
+        self.assertEqual(r["quarters"], [250, 250, 250, 250])
+        r = allocate_quarter_targets(1001, [None, 300, None, None])
+        self.assertEqual(r["quarters"], [233, 300, 233, 235])  # 701 ÷ 3, 나머지 2원은 마지막 빈 분기
+        self.assertEqual(r["sources"], ["allocated", "input", "allocated", "allocated"])
+        self.assertIsNone(r["warning"])
+        self.assertEqual(allocate_month_targets([10, 0, 0, 0])[:3], [3, 3, 4])
+
+    def test_warnings(self):
+        from .targets import allocate_quarter_targets
+
+        self.assertEqual(allocate_quarter_targets(100, [50, 50, 50, None])["warning"], "QUARTER_SUM_EXCEEDS_ANNUAL")
+        self.assertEqual(allocate_quarter_targets(100, [20, 20, 20, 20])["warning"], "QUARTER_SUM_MISMATCH")
+
+
+class TargetApiTests(APITestCase):
+    def setUp(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+
+    def put(self, amount, quarters=(None, None, None, None), headcount=None, stamp="load"):
+        if stamp == "load":
+            stamp = self.client.get("/api/management/targets/2026/").data["updated_at"]
+        body = {"target_amount": amount, "quarters": list(quarters), "headcount": headcount, "expected_updated_at": stamp}
+        return self.client.put("/api/management/targets/2026/", body, format="json")
+
+    def test_create_then_update_recorded(self):
+        res = self.put(1000, headcount=12)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["allocation"]["quarters"], [250, 250, 250, 250])
+        log = AuditLog.objects.get()
+        self.assertEqual((log.action, log.target_label), ("CREATE", "2026년 목표"))
+        self.put(1000, quarters=(400, None, None, None), headcount=12)
+        log = AuditLog.objects.first()
+        self.assertEqual(log.action, "UPDATE")
+        self.assertEqual(log.changes, [{"field": "q1_target", "label": "1분기 목표", "before": "자동 배분", "after": "400원"}])
+        self.put(1000, quarters=(400, None, None, None), headcount=12)  # 바뀐 칸 없음 → 기록 안 함
+        self.assertEqual(AuditLog.objects.count(), 2)
+
+    def test_zero_target_rejected(self):
+        self.assertEqual(self.put(0).status_code, 400)
+
+    def test_stale_save_rejected(self):
+        self.put(1000)
+        self.assertEqual(self.put(2000, stamp=None).status_code, 409)  # 처음 불러올 때는 없던 목표
+
+    def test_other_team_blocked(self):
+        self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
+        self.assertEqual(self.client.get("/api/management/targets/2026/").status_code, 403)
+
+
+class ExpenseCategoryApiTests(APITestCase):
+    def setUp(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+        self.a = ExpenseCategory.objects.create(name="광고선전비", sort_order=1)
+        self.b = ExpenseCategory.objects.create(name="접대비", sort_order=2)
+
+    def save(self, items, deleted=(), version=None):
+        version = version or self.client.get("/api/management/expense-categories/").data["version"]
+        body = {"items": items, "deleted_ids": list(deleted), "version": version}
+        return self.client.put("/api/management/expense-categories/", body, format="json")
+
+    def item(self, c, **kw):
+        return {"id": c.id if c else None, "name": c.name if c else "", "cost_type": "", "is_active": True, **kw}
+
+    def test_swap_names_add_and_reorder(self):
+        res = self.save([self.item(self.b, name="광고선전비"), self.item(self.a, name="접대비"), self.item(None, name="  연구  개발비 ")])
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual([r["name"] for r in res.data["rows"]], ["광고선전비", "접대비", "연구 개발비"])
+        actions = sorted(AuditLog.objects.values_list("action", flat=True))
+        self.assertEqual(actions, ["CREATE", "UPDATE", "UPDATE", "UPDATE"])  # 이름 2개 + 순서 1건 + 추가
+
+    def test_duplicate_name_rejected(self):
+        res = self.save([self.item(self.a), self.item(self.b, name="광고선전비")])
+        self.assertEqual(res.status_code, 400)
+
+    def test_used_category_cannot_be_deleted(self):
+        f = MonthlyFinance.objects.create(year=2026, month=9)
+        OtherExpense.objects.create(monthly=f, category=self.a, amount=5)
+        self.assertEqual(self.save([self.item(self.b)], deleted=[self.a.id]).status_code, 400)
+        res = self.save([self.item(self.a)], deleted=[self.b.id])
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(ExpenseCategory.objects.filter(pk=self.b.pk).exists())
+
+    def test_stale_version_rejected(self):
+        old = self.client.get("/api/management/expense-categories/").data["version"]
+        self.save([self.item(self.a, is_active=False), self.item(self.b)])
+        self.assertEqual(self.save([self.item(self.a), self.item(self.b)], version=old).status_code, 409)
+
+    def test_missing_row_is_conflict(self):
+        # 그 사이 다른 사람이 항목을 추가했으면 화면 목록에 없는 항목이 생김
+        self.assertEqual(self.save([self.item(self.a)]).status_code, 409)

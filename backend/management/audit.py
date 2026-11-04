@@ -14,6 +14,9 @@ from .serializers import VALUE_FIELDS
 
 # 동작 → 화면 표기
 ACTION_LABELS = {
+    "CREATE": "추가",
+    "UPDATE": "수정",
+    "DELETE": "삭제",
     "CONFIRM": "확정",
     "UPDATE_CONFIRMED": "확정 후 수정",
     "UNCONFIRM": "확정 취소",
@@ -23,6 +26,8 @@ ACTION_LABELS = {
 SCREEN_LABELS = {
     "entry": "월간 입력",
     "entry-export": "월간 입력 엑셀 다운로드",
+    "targets": "목표 설정",
+    "expense-categories": "지출 항목",
 }
 
 _FORBIDDEN = re.compile(r"pass(word|wd)?|hash|token|secret|session|salt|credential|apikey|api_key", re.I)
@@ -56,8 +61,8 @@ def record_audit(*, actor, screen, action, target_type, target_id, target_label,
     forbidden = [c["field"] for c in changes if _FORBIDDEN.search(c["field"])] + _forbidden_keys(meta or {}, "meta")
     if forbidden:
         raise AuditForbiddenFieldError(f"변경 기록에 넣을 수 없는 칸이 있습니다: {', '.join(forbidden)}")
-    if action == "UPDATE_CONFIRMED" and not changes:
-        return None
+    if action in ("UPDATE", "UPDATE_CONFIRMED") and not changes:
+        return None  # 수정인데 바뀐 칸이 없으면 기록하지 않는다
     return AuditLog.objects.create(
         occurred_at=timezone.now(),
         actor=actor,
@@ -115,6 +120,55 @@ def monthly_changes(before, after, category_names):
             continue
         add("other_expense", f"그 외 지출 · {category_names.get(cid, '(삭제된 항목)')}", b, a)
     return changes
+
+
+# ---------- 공통: 기록할 칸 목록(허용 목록)에 있는 칸만, 바뀐 칸만 ----------
+
+
+def diff_fields(before, after, fields):
+    """before/after: 칸 이름 → 값 (추가는 before=None, 삭제는 after=None). fields: [(칸, 화면 이름, 표기 함수)]"""
+    changes = []
+    for key, label, fmt in fields:
+        b = fmt(before[key]) if before else None
+        a = fmt(after[key]) if after else None
+        if b != a:
+            changes.append({"field": key, "label": label, "before": b, "after": a})
+    return changes
+
+
+def text(value):
+    return None if value in (None, "") else str(value)
+
+
+# ---------- 목표 설정 ----------
+
+
+def _quarter(value):
+    return "자동 배분" if value is None else won(value)
+
+
+TARGET_FIELDS = [
+    ("target_amount", "연간 목표매출액", won),
+    ("q1_target", "1분기 목표", _quarter),
+    ("q2_target", "2분기 목표", _quarter),
+    ("q3_target", "3분기 목표", _quarter),
+    ("q4_target", "4분기 목표", _quarter),
+    ("headcount", "직원 수", lambda v: None if v is None else f"{v}명"),
+]
+
+
+def target_label(year):
+    return f"{year}년 목표"
+
+
+# ---------- 그 외 지출 항목 ----------
+
+COST_TYPE_LABELS = {"fixed": "고정비", "variable": "변동비"}
+CATEGORY_FIELDS = [
+    ("name", "항목 이름", text),
+    ("cost_type", "고정비/변동비", lambda v: COST_TYPE_LABELS.get(v) if v else None),
+    ("is_active", "사용", lambda v: "사용" if v else "비활성"),
+]
 
 
 # ---------- 화면 표시 ----------

@@ -3,7 +3,14 @@
 export const TEAM_MENUS = {
   management: [
     { group: '조회', items: [{ label: '대시보드', to: '/management' }, { label: '변경 이력', to: '/management/history' }] },
-    { group: '데이터 입력', edit: true, items: [{ label: '월간 입력', to: '/management/entry' }] },
+    {
+      group: '데이터 입력',
+      edit: true,
+      items: [
+        { label: '월간 입력', to: '/management/entry' },
+        { label: '목표·항목 설정', to: '/management/settings' },
+      ],
+    },
   ],
   production: [
     {

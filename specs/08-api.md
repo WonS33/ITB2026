@@ -36,7 +36,8 @@
 
 | 메서드 | 주소 | 기능 | 권한 |
 |---|---|---|---|
-| GET / PUT | `/api/management/targets/{year}/` | 연간 목표매출 조회·입력 | 조회·입력: 전체 |
+| GET / PUT | `/api/management/targets/{year}/` | 연간 목표매출 조회·저장. PUT `target_amount`(필수), `quarters`[4](빈칸 null = 자동 배분), `headcount`(선택), `expected_updated_at`. 응답 `allocation`(분기 배분 결과·경고) | 조회·입력: 전체 |
+| GET / PUT | `/api/management/expense-categories/` | 그 외 지출 항목 목록(`used_months` = 금액이 있는 달 수)·저장. PUT은 화면 순서대로 전체 `items` + `deleted_ids` + `version`(동시 수정 확인). 금액이 입력된 적 있는 항목 삭제는 400 | 전체 |
 | GET / PUT | `/api/management/monthly/{year}/{month}/` | 월별 실적 조회·저장. PUT `intent`: `draft`(임시저장) / `confirm`(확정) / `update_confirmed`(확정된 달 수정). 응답에 `status`(new·draft·confirmed), `month_state`(future·current·closed), `abilities`(가능한 버튼), `previous`(전월 값) | 조회·입력: 전체 |
 | POST | `/api/management/monthly/{year}/{month}/unconfirm/` | 확정 취소 (확정 → 임시저장) | 전체 |
 | GET | `/api/management/monthly/{year}/{month}/ledger/` | [경영지원 관리에서 불러오기]용 그 달 장부 행 (외상매출금·숨긴 행 제외, 읽기만). 입력할 수 없는 달은 403 | 전체 |
@@ -131,3 +132,4 @@
 - 2026-11-02: 부품 단가 엑셀 내려받기 2개, 상세·출장지별 비교에 `base_price`·`base_date`(견적 당시 기준값)·`low`(크게 낮음)·`revisions`, `price-standard/`에 `low_alert_rate`, 제품 기준값 `settings/`·열람 기록 `access-log/` 추가
 - 2026-11-04: 월간 입력 API 구현(`backend/management/`). 미래 달 저장 불가, 이번 달은 임시저장만, 지난 달은 확정까지 — 규칙을 어기면 403
 - 2026-11-04: 월간 입력 PUT·확정 취소에 `expected_updated_at` 필수 — 화면을 불러온 뒤 다른 저장이 있었으면 409(동시 수정). 장부 불러오기·엑셀·변경 이력 API 추가
+- 2026-11-04: 목표 설정(분기 목표·직원 수)·그 외 지출 항목 관리 API 구현. 둘 다 동시 수정이면 409, 저장하면 변경 기록

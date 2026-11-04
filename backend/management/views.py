@@ -5,7 +5,7 @@ from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpResponse
 from django.utils import timezone
-from django.utils.dateparse import parse_date, parse_datetime
+from django.utils.dateparse import parse_date
 from rest_framework.exceptions import APIException, PermissionDenied, ValidationError
 from rest_framework.response import Response
 from rest_framework.views import APIView

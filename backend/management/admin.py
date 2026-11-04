@@ -1,11 +1,16 @@
 from django.contrib import admin
 
-from .models import AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
+from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
 
 
 class OtherExpenseInline(admin.TabularInline):
     model = OtherExpense
     extra = 0
+
+
+@admin.register(AnnualSalesTarget)
+class AnnualSalesTargetAdmin(admin.ModelAdmin):
+    list_display = ("year", "target_amount", "headcount", "updated_at")
 
 
 @admin.register(MonthlyFinance)

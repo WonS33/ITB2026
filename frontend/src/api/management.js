@@ -21,3 +21,8 @@ export function getHistory(filters) {
   Object.entries(filters).forEach(([k, v]) => v && params.set(k, v))
   return apiFetch(`/management/history/?${params}`)
 }
+// 목표·항목 설정 — 연간 목표(분기 목표·직원 수는 선택), 그 외 지출 항목(목록 전체를 한 번에 저장)
+export const getTarget = (year) => apiFetch(`/management/targets/${year}/`)
+export const saveTarget = (year, body) => apiFetch(`/management/targets/${year}/`, { method: 'PUT', body })
+export const getCategories = () => apiFetch('/management/expense-categories/')
+export const saveCategories = (body) => apiFetch('/management/expense-categories/', { method: 'PUT', body })

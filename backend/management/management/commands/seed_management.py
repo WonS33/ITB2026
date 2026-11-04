@@ -4,7 +4,7 @@ from datetime import date, datetime
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from management.models import ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
+from management.models import AnnualSalesTarget, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
 
 # 개발·시연용 가상 데이터 (조원 저장소 prisma/seed.ts 의 값 범위를 따름, 실제 기업 숫자 아님)
 CATEGORIES = [
@@ -17,6 +17,13 @@ CATEGORIES = [
 ]
 MONTHS = 24
 LEDGER_MONTHS = 3  # 장부 가상 데이터는 최근 3개월만
+# 연간 목표 (올해 기준 몇 년 전, 연간 목표, 1~4분기 목표 — None = 자동 배분). 분기 배분 규칙 세 가지를 모두 보여 줌
+TARGETS = [
+    (2, 2_200_000_000, [None, None, None, 600_000_000]),  # 4분기만 입력 → 나머지는 자동 배분
+    (1, 2_400_000_000, [500_000_000, 600_000_000, 600_000_000, 700_000_000]),  # 모두 입력
+    (0, 2_800_000_000, [None, None, None, None]),  # 모두 비움 → 연간 ÷ 4
+]
+HEADCOUNT = 12  # 직원 수 (프로젝트 개요: 직원 12명)
 
 
 def won(rng, low, high):
@@ -25,7 +32,7 @@ def won(rng, low, high):
 
 
 class Command(BaseCommand):
-    help = "가상 경영지원 데이터: 그 외 지출 항목 5개 + 지난달까지 24개월 월별 실적 (지난달만 임시저장) + 최근 3개월 경영지원 관리 장부. 여러 번 실행해도 같은 값으로 덮어씀."
+    help = "가상 경영지원 데이터: 최근 3년 연간 목표 + 그 외 지출 항목 5개 + 지난달까지 24개월 월별 실적 (지난달만 임시저장) + 최근 3개월 경영지원 관리 장부. 여러 번 실행해도 같은 값으로 덮어씀."
 
     def handle(self, *args, **options):
         rng = random.Random(20261016)  # 실행할 때마다 같은 가상 값
@@ -37,6 +44,16 @@ class Command(BaseCommand):
             categories.append((category, low, high))
 
         today = timezone.localdate()
+        for years_ago, amount, quarters in TARGETS:
+            AnnualSalesTarget.objects.update_or_create(
+                year=today.year - years_ago,
+                defaults={
+                    "target_amount": amount,
+                    **{f"q{i}_target": q for i, q in enumerate(quarters, start=1)},
+                    "headcount": HEADCOUNT,
+                },
+            )
+
         last = today.year * 12 + today.month - 2  # 지난달 (0부터 센 월 번호)
         for i in range(MONTHS):
             index = last - (MONTHS - 1) + i
