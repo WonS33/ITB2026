@@ -29,5 +29,5 @@ export const exportRecords = (period, filters) =>
 export const getOrders = (period, filters, page) => apiFetch(`/production/orders/?${listParams(period, filters, page)}`)
 export const exportOrders = (period, filters) =>
   downloadFile(`/production/orders/export/?${listParams(period, filters)}`, '수주내역.xlsx')
-// 판매 실적 (설정: date_basis, customer_basis, product_group, compare / 교차 필터: industry, customer, product)
-export const getSales = (period, options) => apiFetch(`/production/sales/?${listParams(period, options)}`)
+// 생산량 집계 — 제조년월 기준 (설정: customer_basis, product_group, compare / 교차 필터: industry, customer, product)
+export const getBreakdown = (period, options) => apiFetch(`/production/breakdown/?${listParams(period, options)}`)

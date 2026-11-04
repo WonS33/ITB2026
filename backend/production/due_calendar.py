@@ -19,7 +19,7 @@ from common.periods import make_period
 
 from .models import ManufacturingRecord
 
-DUE_SOON_DAYS = 14  # 납기 임박: 오늘부터 14일 안 (제안)
+DUE_SOON_DAYS = 7  # 납기 임박: 오늘부터 7일 안 (D-7, 2026-11-04 기업 확인)
 SEARCH_LIMIT = 50  # 캘린더 검색 결과 최대 수주 묶음 수
 OVERDUE_LOOKBACK_DAYS = 30  # 납기 지남·미출고는 최근 30일 것만 (오래된 행에 출고일이 비어 있어도 목록이 넘치지 않게)
 
@@ -71,7 +71,7 @@ def due_calendar(year, month, today=None):
 
 def due_soon(today=None):
     """메인 대시보드 '납기 임박': 출고가 끝나지 않은 수주 중
-    납기 지남(최근 30일) + 오늘부터 14일 안. 납기일 순서, D-day 포함"""
+    납기 지남(최근 30일) + 오늘부터 7일 안(D-7까지). 납기일 순서, D-day 포함"""
     today = today or date.today()
     records = ManufacturingRecord.objects.filter(
         due_date__range=(today - timedelta(days=OVERDUE_LOOKBACK_DAYS), today + timedelta(days=DUE_SOON_DAYS))

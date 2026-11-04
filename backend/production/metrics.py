@@ -1,15 +1,15 @@
 """생산팀 지표 계산 (specs/09-metrics.md 3절)
 
 - 기간 생산량 = 제조년월이 기간에 속하는 제조내역(일련번호) 수
-- 기간 목표 생산량 = 연간 목표 ÷ 12 × 기간 개월 수   ← 기업 확인 전 임시 기준
+- 기간 목표 생산량 = 연간 목표 ÷ 12 × 기간 개월 수 (2026-11-04 확정)
 - 생산량 달성률(%) = 기간 생산량 ÷ 기간 목표 생산량 × 100
 - 부족치(대) = 기간 목표 생산량 − 기간 생산량 (0보다 작으면 0)
-- 월별 생산량 = 선택한 연도 1~12월 각 달의 제조내역 수, 월 목표 = 연간 목표 ÷ 12 (임시 기준)
+- 월별 생산량 = 선택한 연도 1~12월 각 달의 제조내역 수, 월 목표 = 연간 목표 ÷ 12
 - 연간 목표까지 남은 양 = 연간 목표 − 올해 누적 생산량, 월 평균 필요량 = 남은 양 ÷ 남은 개월 수(이번 달 포함)
 - 연말 예상 생산량(예측) = 올해 누적 ÷ 1월 1일부터 오늘까지 일수 × 그 해 일수 (지금 속도가 이어진다고 가정)
 - 모델별 생산량 = 기간 생산량을 제조내역 모델명별로 센 값
-- 산업 분야별·거래처별·제품별 판매량(대) = 수주서 제품 수량 합계
-  (기간 기준 날짜: 수주서 납기일 ← 기업 확인 전 임시 기준, 거래처: 수주서 판매처)
+- 산업 분야별·거래처별·제품별 생산량(대) = 제조년월이 기간에 속하는 제조내역 수 (2026-11-04 기업 확인: 판매량 → 생산량)
+  (산업 분야: PO번호와 같은 번호의 수주서에서, 못 찾으면 "수주서 미연결")
 """
 
 import calendar
@@ -250,27 +250,35 @@ def model_names():
     return sorted(names)
 
 
-# ── 판매 실적: 직원이 기준을 바꿔 보는 설정 (specs/09-metrics.md 3절) ──────────
+# ── 생산량 집계: 직원이 기준을 바꿔 보는 설정 (specs/09-metrics.md 3절) ──────────
+# 2026-11-04 기업 확인: "판매량 집계"를 "생산량 집계"로 바꾸고 제조년월 기준으로 센다 (제조내역 1행 = 1대)
+# 산업 분야는 제조내역에 없어, PO번호와 같은 번호의 수주서(수주서류 번호, 예: #26001 ↔ NTK-SO-26001)에서 가져온다
 
-# 기간을 셀 기준 날짜 (수주서의 어느 날짜로 기간에 넣을지)
-DATE_BASES = {"due": "order__due_date", "order": "order__order_date", "delivery": "order__delivery_date"}
-# 거래처 기준
-CUSTOMER_BASES = {"customer": "order__customer", "final_orderer": "order__final_orderer"}
-PRODUCT_GROUPS = ("name", "model", "size", "type")
+CUSTOMER_BASES = {"customer": "customer", "final_orderer": "final_orderer"}
+PRODUCT_GROUPS = ("model", "series")  # 모델별(NTI-04) · 시리즈별(NTI)
 COMPARES = ("none", "previous", "last_year")
-OTHER_FORMAT = "기타(형식 다름)"
 NO_NAME = "(미입력)"
-
-# 품명 형식 "제수 150A: NTI-03" = 종류 구경: 모델 (확인 필요 — 형식이 다르면 "기타(형식 다름)")
-PRODUCT_NAME_RE = re.compile(r"^\s*(?P<type>\S+)\s+(?P<size>\d+A)\s*:\s*(?P<model>\S+)\s*$")
+NO_ORDER = "수주서 미연결"  # 같은 번호의 수주서를 못 찾은 제조내역의 산업 분야
 
 
-def product_group(name, group):
-    if group == "name":
-        return name or NO_NAME
-    m = PRODUCT_NAME_RE.match(name or "")
-    return m.group(group) if m else OTHER_FORMAT
+def order_key(text):
+    """PO번호·수주서류 번호를 잇는 번호: 숫자만 남긴다 (#26001 → 26001, NTK-SO-26001 → 26001)"""
+    return re.sub(r"\D", "", text or "")
 
+
+def industry_by_po():
+    """{번호: 산업 분야} — 수주서류 번호를 먼저 보고, 없으면 판매번호 끝 숫자로 잇는다"""
+    mapping = {}
+    for doc_no, sales_no, industry in SalesOrder.objects.order_by("-id").values_list("order_doc_no", "sales_no", "industry"):
+        for key in (order_key(doc_no), order_key(sales_no.rsplit("-", 1)[-1])):
+            if key:
+                mapping.setdefault(key, industry)
+    return mapping
+
+
+def product_group(model_name, group):
+    name = model_name or NO_NAME
+    return name.split("-", 1)[0] if group == "series" and model_name else name
 
 
 def previous_period(period, compare):
@@ -283,15 +291,6 @@ def previous_period(period, compare):
     quarter = quarter_of(period.months[0])
     year, quarter = (period.year - 1, 4) if quarter == 1 else (period.year, quarter - 1)
     return make_period("quarter", year, quarter=quarter)
-
-
-def _grouped(items, field, group=None):
-    """품목 → {이름: 수량} (제품은 묶음 단위로 다시 합친다)"""
-    totals = {}
-    for row in items.values(field).annotate(quantity=Sum("quantity")):
-        name = product_group(row[field], group) if group else (row[field] or NO_NAME)
-        totals[name] = totals.get(name, 0) + row["quantity"]
-    return totals
 
 
 def _ranking_rows(current, previous):
@@ -307,56 +306,62 @@ def _ranking_rows(current, previous):
     return sorted(rows, key=lambda r: (-r["quantity"], r["name"]))
 
 
-def sales_summary(period, date_basis="due", customer_basis="customer", product_group_by="name",
-                  compare="none", industry="", customer="", product=""):
-    """판매 실적 (수주서 제품 수량)
+def production_breakdown(period, customer_basis="customer", product_group_by="model",
+                         compare="none", industry="", customer="", product=""):
+    """생산량 집계 (제조년월 기준, 제조내역 1행 = 1대)
 
-    - date_basis: 기간에 넣을 날짜 (납기일·수주일·납품일)
-    - customer_basis: 거래처를 판매처로 볼지 최종발주처로 볼지
-    - product_group_by: 제품을 품명 그대로·모델·구경·종류로 묶기
+    - customer_basis: 거래처를 제조내역의 거래처로 볼지 최종발주처로 볼지
+    - product_group_by: 제품을 모델별·시리즈별로 묶기
     - compare: 비교 기간 (없음·직전 기간·전년 동기) → 순위마다 previous·change
     - industry·customer·product: 교차 필터. 각 순위는 "자기 자신을 뺀 나머지 필터"만 적용한다
       (예: 산업 분야를 골라도 산업 분야 순위는 전체를 보여 주고, 거래처·제품 순위가 좁혀진다)
     """
-    date_field = DATE_BASES[date_basis]
     customer_field = CUSTOMER_BASES[customer_basis]
+    industries = industry_by_po()
 
-    def items_in(p):
-        return SalesOrderItem.objects.filter(**{f"{date_field}__range": (p.start, p.end)})
+    def rows_in(p):
+        return [
+            {
+                "industry": industries.get(order_key(r["po_no"]), NO_ORDER),
+                "customer": r[customer_field] or NO_NAME,
+                "product": product_group(r["model_name"], product_group_by),
+            }
+            for r in ManufacturingRecord.objects.filter(manufactured_date__range=(p.start, p.end))
+            .values("po_no", "model_name", customer_field)
+        ]
 
-    def apply(items, skip=None):
-        if industry and skip != "industry":
-            items = items.filter(order__industry=industry)
-        if customer and skip != "customer":
-            items = items.filter(**{customer_field: "" if customer == NO_NAME else customer})
-        if product and skip != "product":
-            names = {n for n in items.values_list("product_name", flat=True).distinct()
-                     if product_group(n, product_group_by) == product}
-            items = items.filter(product_name__in=names)
-        return items
+    chosen = {"industry": industry, "customer": customer, "product": product}
+
+    def count(rows, field):
+        totals = {}
+        for r in rows:
+            # 자기 자신을 뺀 나머지 필터만 적용
+            if all(not v or r[k] == v for k, v in chosen.items() if k != field):
+                totals[r[field]] = totals.get(r[field], 0) + 1
+        return totals
 
     periods = [period] + ([previous_period(period, compare)] if compare != "none" else [])
     results = []
     for p in periods:
-        base = items_in(p)
+        rows = rows_in(p)
         results.append({
-            "total": apply(base).aggregate(total=Sum("quantity"))["total"] or 0,
-            "by_industry": _grouped(apply(base, "industry"), "order__industry"),
-            "by_customer": _grouped(apply(base, "customer"), customer_field),
-            "by_product": _grouped(apply(base, "product"), "product_name", product_group_by),
+            "total": sum(1 for r in rows if all(not v or r[k] == v for k, v in chosen.items())),
+            "by_industry": count(rows, "industry"),
+            "by_customer": count(rows, "customer"),
+            "by_product": count(rows, "product"),
+            "unlinked": sum(1 for r in rows if r["industry"] == NO_ORDER),
         })
     current = results[0]
     prev = results[1] if len(results) > 1 else None
-
-    # 고른 날짜가 비어 있어 이 기준으로는 셀 수 없는 수주서 수 (화면에 안내)
-    missing = SalesOrder.objects.filter(**{f"{date_field[len('order__'):]}__isnull": True}).count()
 
     summary = {
         "total": current["total"],
         "by_industry": _ranking_rows(current["by_industry"], prev and prev["by_industry"]),
         "by_customer": _ranking_rows(current["by_customer"], prev and prev["by_customer"]),
         "by_product": _ranking_rows(current["by_product"], prev and prev["by_product"]),
-        "missing_date_orders": missing,
+        "unlinked": current["unlinked"],  # 수주서와 못 이은 제조내역 수 (산업 분야 "수주서 미연결")
+        # 제조년월이 비어 있어 어느 기간에도 들어가지 않는 제조내역 수 (화면에 안내)
+        "missing_date_records": ManufacturingRecord.objects.filter(manufactured_date__isnull=True).count(),
     }
     if prev is not None:
         p = periods[1]

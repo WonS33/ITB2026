@@ -16,7 +16,7 @@ const saved = ref(false)
       @saved="saved = true"
     />
     <p v-if="saved" class="small">
-      저장한 내용은 <RouterLink to="/production">대시보드</RouterLink>(판매 실적)와
+      저장한 내용은 <RouterLink to="/production">대시보드</RouterLink>(생산량 집계의 산업 분야)와
       <RouterLink to="/production/serials">일련번호 조회</RouterLink>(플랜지 보완)에서 확인할 수 있습니다.
     </p>
   </div>

@@ -11,15 +11,14 @@ from .due_calendar import due_calendar, due_soon, search_due
 from .metrics import (
     COMPARES,
     CUSTOMER_BASES,
-    DATE_BASES,
     PRODUCT_GROUPS,
     delivery_performance,
     model_names,
     monthly_production,
+    production_breakdown,
     production_by_model,
     production_compare,
     production_summary,
-    sales_summary,
     unshipped_status,
     year_progress,
 )
@@ -96,9 +95,9 @@ def _choice(params, name, choices, default):
     return value
 
 
-class SalesView(ProductionApiView):
-    """GET /api/production/sales/?(기간)&date_basis=&customer_basis=&product_group=&compare=&industry=&customer=&product=
-    판매 실적 — 직원이 기준 날짜·거래처 기준·제품 묶음·비교 기간·교차 필터를 바꿔 본다"""
+class BreakdownView(ProductionApiView):
+    """GET /api/production/breakdown/?(기간)&customer_basis=&product_group=&compare=&industry=&customer=&product=
+    생산량 집계(제조년월 기준, 2026-11-04 판매량에서 바꿈) — 거래처 기준·제품 묶음·비교 기간·교차 필터를 바꿔 본다"""
 
     def get(self, request):
         params = request.query_params
@@ -106,11 +105,10 @@ class SalesView(ProductionApiView):
         return Response(
             {
                 "period": _period_info(period),
-                "sales": sales_summary(
+                "breakdown": production_breakdown(
                     period,
-                    date_basis=_choice(params, "date_basis", DATE_BASES, "due"),
                     customer_basis=_choice(params, "customer_basis", CUSTOMER_BASES, "customer"),
-                    product_group_by=_choice(params, "product_group", PRODUCT_GROUPS, "name"),
+                    product_group_by=_choice(params, "product_group", PRODUCT_GROUPS, "model"),
                     compare=_choice(params, "compare", COMPARES, "none"),
                     industry=params.get("industry") or "",
                     customer=params.get("customer") or "",

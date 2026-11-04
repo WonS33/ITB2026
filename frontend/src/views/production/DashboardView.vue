@@ -1,11 +1,11 @@
 <script setup>
-// 생산팀 대시보드: 납기 임박(오늘 기준) + 생산 실적(목표 대비·비교) + 납기·출고 + 판매 실적
+// 생산팀 대시보드: 납기 임박(오늘 기준) + 생산 실적(목표 대비·비교) + 납기·출고 + 생산량 집계(제조년월 기준)
 import { computed, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import PeriodSelector from '@/components/PeriodSelector.vue'
 import DueSoon from '@/components/production/DueSoon.vue'
 import DeliveryStatus from '@/components/production/DeliveryStatus.vue'
-import SalesSection from '@/components/production/SalesSection.vue'
+import BreakdownSection from '@/components/production/BreakdownSection.vue'
 import AchievementRing from '@/components/production/AchievementRing.vue'
 import ProductionBars from '@/components/production/ProductionBars.vue'
 import YearProgress from '@/components/production/YearProgress.vue'
@@ -18,7 +18,7 @@ import { getDashboard } from '@/api/production'
 const data = ref(null)
 const error = ref('')
 
-// 비교 기간 (판매 실적과 같은 규칙) + 겹쳐 보기 — 고른 값은 이 브라우저에 기억 (개인 편의용)
+// 비교 기간 (생산량 집계와 같은 규칙) + 겹쳐 보기 — 고른 값은 이 브라우저에 기억 (개인 편의용)
 const COMPARES = [
   { value: 'none', label: '비교 안 함' },
   { value: 'previous', label: '직전 기간' },
@@ -64,7 +64,7 @@ function modelColor(name) {
   return i === -1 || i >= SERIES_COLORS.length ? OTHER_COLOR : SERIES_COLORS[i]
 }
 // 생산량 막대: 월별(1~12월) / 분기별(1~4분기) 전환
-// 분기 목표 = 연간 목표 ÷ 4 (= 연간 ÷ 12 × 3, 당월·분기 목표와 같은 임시 기준)
+// 분기 목표 = 연간 목표 ÷ 4 (= 연간 ÷ 12 × 3, 당월·분기 목표와 같은 기준 — 2026-11-04 확정)
 const BAR_UNITS = [
   { value: 'month', label: '월별' },
   { value: 'quarter', label: '분기별' },
@@ -210,8 +210,7 @@ watch([period, () => view.value.compare], load, { deep: true, immediate: true })
           연간 목표 생산량이 없어 달성률·부족치를 계산할 수 없습니다.
         </p>
         <p class="text-muted small mt-2 mb-0">
-          ※ 당월·분기 목표는 "연간 목표 ÷ 12 × 개월 수"로 나눈 임시 기준입니다 (기업 확인 필요).
-          수주량 = 그 달 납기일인 수주서 제품 수량(판매 실적 기본 기준). 일련번호로 잇지 않고 월 합계만 비교합니다.
+          수주량 = 그 달 납기일인 수주서 제품 수량. 일련번호로 잇지 않고 월 합계만 비교합니다.
         </p>
 
         <hr class="my-3" />
@@ -229,7 +228,7 @@ watch([period, () => view.value.compare], load, { deep: true, immediate: true })
 
       <DeliveryStatus :delivery="data.delivery" :unshipped="data.unshipped" :label="data.period.label" />
 
-      <SalesSection />
+      <BreakdownSection />
     </template>
   </div>
 </template>

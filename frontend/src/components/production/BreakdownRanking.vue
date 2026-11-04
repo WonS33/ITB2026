@@ -1,6 +1,6 @@
 <script setup>
-// 판매 순위 표: 이름 · 수량 막대 · 수량(비중) · 비교 기간 대비 증감
-// 줄을 누르면 select(이름)을 알린다 → 판매 실적 화면이 그 이름으로 다른 순위를 좁힌다(교차 필터)
+// 생산량 순위 표: 이름 · 수량 막대 · 수량(비중) · 비교 기간 대비 증감
+// 줄을 누르면 select(이름)을 알린다 → 생산량 집계 화면이 그 이름으로 다른 순위를 좁힌다(교차 필터)
 import { computed } from 'vue'
 import { percent } from '@/charts'
 
@@ -28,7 +28,7 @@ const changeText = (c) => (c > 0 ? `▲ ${c}` : c < 0 ? `▼ ${-c}` : '–')
         <thead>
           <tr>
             <th>이름</th>
-            <th style="width: 34%">판매량</th>
+            <th style="width: 34%">생산량</th>
             <th class="text-end">대수</th>
             <th v-if="compareLabel" class="text-end text-nowrap" :title="`${compareLabel} 대비`">증감</th>
           </tr>

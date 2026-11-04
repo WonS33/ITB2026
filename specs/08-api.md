@@ -51,12 +51,12 @@
 | 메서드 | 주소 | 기능 | 권한 |
 |---|---|---|---|
 | GET / PUT | `/api/production/targets/{year}/` | 연간 목표 생산량 | 조회: 생산 열람 / 입력: 생산 수정 |
-| GET | `/api/production/dashboard/?(기간)&compare=none\|previous\|last_year` | 생산량 달성률·부족치, `compare`(비교 기간 생산량·증감), 월별 생산량·월 목표·수주량(`orders`)·전년(`last_year`, 비교할 때만), `delivery`(납기 준수율), `unshipped`(미출고 현황, 오늘 기준), 연간 목표 진행·연말 예상(예측), 모델별 생산량 (판매 실적은 `sales/`로 분리) | 생산 열람 |
-| GET | `/api/production/sales/?(기간)&date_basis=due\|order\|delivery&customer_basis=customer\|final_orderer&product_group=name\|model\|size\|type&compare=none\|previous\|last_year&industry=&customer=&product=` | 판매 실적: 총 판매량, 산업 분야·거래처·제품 순위(항목마다 `previous`·`change`), `compare`(비교 기간 이름·합계·증감), `missing_date_orders`. 잘못된 설정 값은 400 | 생산 열람 |
+| GET | `/api/production/dashboard/?(기간)&compare=none\|previous\|last_year` | 생산량 달성률·부족치, `compare`(비교 기간 생산량·증감), 월별 생산량·월 목표·수주량(`orders`)·전년(`last_year`, 비교할 때만), `delivery`(납기 준수율), `unshipped`(미출고 현황, 오늘 기준), 연간 목표 진행·연말 예상(예측), 모델별 생산량 (생산량 집계는 `breakdown/`으로 분리) | 생산 열람 |
+| GET | `/api/production/breakdown/?(기간)&customer_basis=customer\|final_orderer&product_group=model\|series&compare=none\|previous\|last_year&industry=&customer=&product=` | 생산량 집계(제조년월 기준): 합계, 산업 분야·거래처·제품 순위(항목마다 `previous`·`change`), `compare`, `unlinked`(수주서 미연결 대수), `missing_date_records`. 잘못된 설정 값은 400 | 생산 열람 |
 | GET | `/api/production/serials/?q=0001` | 일련번호 검색 (4자리·전체) | 생산 열람 |
 | GET | `/api/production/serials/{serial_full}/` | 일련번호 11개 항목 상세 | 생산 열람 |
 | GET | `/api/production/due-calendar/search/?q=` | 납기 캘린더 검색: 수주번호·판매처·사업명·일련번호·거래처 주문번호, 모든 달, 최근 납기부터 최대 50건(`total`로 전체 건수). 검색어가 비면 400 | 생산 열람 |
-| GET | `/api/production/due-soon/` | 납기 임박: 출고가 끝나지 않은 수주 중 오늘부터 14일 안 + 납기 지남(최근 30일). 항목마다 `d_day`, `status`, `shipped`/`quantity` | 생산 열람 |
+| GET | `/api/production/due-soon/` | 납기 임박: 출고가 끝나지 않은 수주 중 오늘부터 7일 안(D-7) + 납기 지남(최근 30일). 항목마다 `d_day`, `status`, `shipped`/`quantity` | 생산 열람 |
 | GET | `/api/production/due-calendar/?year=2026&month=10` | 당월 납기 캘린더 | 생산 열람 |
 | GET | `/api/production/records/?(기간)&q=&model=&shipped=yes\|no&page=` | 제조내역 목록(제조년월 기준, 100건씩). `counts`(전체·출고 완료·출고 전, 출고 상태로 거르기 전 기준), `total`, `model_names`. 잘못된 shipped·page는 400 | 생산 열람 |
 | GET | `/api/production/records/export/?(목록과 같은 조건)` | 걸러 낸 제조내역 전체 .xlsx | 생산 열람 |
@@ -130,6 +130,7 @@
 - 2026-11-02: 업로드 응답에 `update_existing`, 행마다 `update`·`changes`({칸: {old, new}})·`superseded`, 요약에 `update_rows`·`superseded_rows` 추가. 제조내역 확정 저장은 새 행 저장 + 기존 일련번호 갱신(`saved_count`는 합계)
 - 2026-11-02: 출장지별 비교 API `part-catalog/companies/` 추가
 - 2026-11-02: 부품 단가 엑셀 내려받기 2개, 상세·출장지별 비교에 `base_price`·`base_date`(견적 당시 기준값)·`low`(크게 낮음)·`revisions`, `price-standard/`에 `low_alert_rate`, 제품 기준값 `settings/`·열람 기록 `access-log/` 추가
+- 2026-11-04: `GET /api/production/sales/` → `GET /api/production/breakdown/`(생산량 집계, 제조년월 기준). `date_basis` 없앰, `product_group`은 model·series. 납기 임박 `days`는 7
 - 2026-11-04: 월간 입력 API 구현(`backend/management/`). 미래 달 저장 불가, 이번 달은 임시저장만, 지난 달은 확정까지 — 규칙을 어기면 403
 - 2026-11-04: 월간 입력 PUT·확정 취소에 `expected_updated_at` 필수 — 화면을 불러온 뒤 다른 저장이 있었으면 409(동시 수정). 장부 불러오기·엑셀·변경 이력 API 추가
 - 2026-11-04: 목표 설정(분기 목표·직원 수)·그 외 지출 항목 관리 API 구현. 둘 다 동시 수정이면 409, 저장하면 변경 기록

@@ -1,5 +1,5 @@
 <script setup>
-// 생산팀 대시보드 "납기 임박": 출고가 끝나지 않은 수주 중 납기 지남(최근 30일) + 오늘부터 14일 안
+// 생산팀 대시보드 "납기 임박": 출고가 끝나지 않은 수주 중 납기 지남(최근 30일) + 오늘부터 7일 안(D-7)
 // 기간 선택과 관계없이 항상 오늘 기준으로 보여준다
 import { onMounted, ref } from 'vue'
 import { getDueSoon } from '@/api/production'

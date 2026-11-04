@@ -1,5 +1,5 @@
 <script setup>
-// 수주 내역 목록 (specs/05-production.md 7절): 올린 수주서를 납기일 기준으로 훑어본다 (대시보드 판매량과 같은 기준)
+// 수주 내역 목록 (specs/05-production.md 7절): 올린 수주서를 납기일 기준으로 훑어본다
 // 줄을 누르면 아래에 그 수주서의 제품 정보·비고를 펼친다. 걸러 낸 목록은 엑셀로 내려받을 수 있다.
 import { reactive, ref, watch } from 'vue'
 import PeriodSelector from '@/components/PeriodSelector.vue'
