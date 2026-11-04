@@ -109,6 +109,17 @@
 
 - 처음 설계의 `other_expense`(합계 1개)는 항목별 표(ExpenseCategory·OtherExpense)로, `receivables`(월 합계)는 Receivable(건별)·LedgerEntry 외상매출금(대시보드)으로 나눴다.
 
+### AiComment — AI 분석 코멘트 (2026-11-04)
+
+| 필드 | 설명 |
+|---|---|
+| year, quarter | 분석한 분기 (분기마다 여러 개, 가장 최근 것을 보여 줌) |
+| input_summary | 외부 AI로 보낸 합계 숫자 그대로 (거래처명·건별 내역 없음) |
+| result | summary·shortfalls·improvements(각 3문장까지) + 서버가 붙인 headline·long_overdue(거래처명) |
+| input_hash | 입력의 SHA-256 — 지금 데이터와 다르면 "최신이 아님" |
+| model | 실제 모델 이름 / `mock`(모의 응답) / `example`(예시) |
+| prompt_version, created_by, created_at | 분석 기준 버전·생성한 사람·일시 |
+
 ## 3. 생산팀
 
 ### AnnualProductionTarget — 연간 목표 생산량
@@ -302,3 +313,4 @@
 - 2026-11-04: AnnualSalesTarget에 분기 목표(`q1_target`~`q4_target`, 선택)·`headcount`(선택) 추가, ExpenseCategory에 `updated_at` 추가 — 조원 저장소 설계를 따름(목표·항목 설정 3단계)
 - 2026-11-04: Receivable(미수금 건별 기록) 추가 — 조원 저장소 설계를 따름 (5단계)
 - 2026-11-04: LedgerEntry에 `deleted_by`·`updated_by` 추가 (장부 화면, 6-1단계)
+- 2026-11-04: AiComment(AI 분석 코멘트) 추가 — 조원 저장소 설계를 따름 (8단계)

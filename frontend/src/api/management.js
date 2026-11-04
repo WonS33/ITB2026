@@ -69,3 +69,6 @@ export function exportLedger(year, kind, month) {
 }
 // 경영지원 상세 (손익분기점·인당 생산성·미수금 상세·자금 수지 예측 포함)
 export const getDetail = (period) => apiFetch(`/management/detail/?${periodParams(period)}`)
+// AI 분석 코멘트 — 조회는 저장된 것만 (AI 호출 없음), 생성은 [분석하기] (body: year, quarter, expected_latest_id, consent)
+export const getAiComment = (period) => apiFetch(`/management/ai-comment/?${periodParams(period)}`)
+export const generateAiComment = (body) => apiFetch('/management/ai-comment/', { method: 'POST', body })

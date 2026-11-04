@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import dashboard_views, detail_views, ledger_import_views, ledger_views, receivables_views, settings_views, views
+from . import ai_views, dashboard_views, detail_views, ledger_import_views, ledger_views, receivables_views, settings_views, views
 
 urlpatterns = [
     path("monthly/export/", views.MonthlyExportView.as_view()),
@@ -20,6 +20,7 @@ urlpatterns = [
     path("receivables/export/", receivables_views.ReceivablesExportView.as_view()),
     path("receivables/<int:pk>/", receivables_views.ReceivableDetailView.as_view()),
     path("receivables/<int:pk>/<str:action>/", receivables_views.ReceivableActionView.as_view()),
+    path("ai-comment/", ai_views.AiCommentView.as_view()),
     path("dashboard/", dashboard_views.DashboardView.as_view()),
     path("detail/", detail_views.DetailView.as_view()),
     path("targets/<int:year>/", settings_views.TargetView.as_view()),

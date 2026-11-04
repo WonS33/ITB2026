@@ -6,6 +6,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { getDetail } from '@/api/management'
 import PeriodSelector from '@/components/PeriodSelector.vue'
+import AiCommentCard from '@/components/management/AiCommentCard.vue'
 import CashForecast from '@/components/management/CashForecast.vue'
 import RevenueMixChart from '@/components/management/RevenueMixChart.vue'
 import { pctText, won } from '@/money'
@@ -54,6 +55,8 @@ const AR_LABEL = { long_overdue: '장기 미수금', scheduled: '당월 수금�
     <div v-if="!s" class="text-muted">불러오는 중…</div>
     <template v-else>
       <p class="small text-muted">{{ s.period.label }} · 확정된 달만 집계 (확정 {{ s.confirmation.confirmed_months.length }}개월 / {{ s.period.months.length }}개월) · 간이 지표는 회계상 값과 다를 수 있습니다</p>
+
+      <AiCommentCard />
 
       <!-- ① 매출 구성 · 이익 계산 -->
       <div class="row g-3 mb-3">

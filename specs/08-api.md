@@ -58,7 +58,8 @@
 | GET | `/api/management/dashboard/?(기간)` | 메인 화면 집계: `confirmation`(확정·미확정·마감 전 달), `revenue`·`costs`(구성 포함)·`profit`(간이), `changes`(직전 기간·전년 동기 증감), `targets`(기간·분기·연간 진도), `trend`(최근 12개월), `receivables`(외상매출금 기준), `teams`(생산량·산업 분야·제품·서비스) | 전체 |
 | GET | `/api/management/detail/?(기간)` | 경영지원 상세: 대시보드 집계(항목별 증감 `revenue_items`·`cost_items`, 월별 매출 구성 포함) + `break_even`·`productivity`·`receivables`(거래처별·수금 예정·미수 행) + `cash_forecast`(오늘 기준 6개월) | 전체 |
 | GET | `/api/management/targets/{year}/export/` | 목표 대비 실적 엑셀 (확정된 달만, 변경 기록에 남김) | 전체 |
-| POST | `/api/management/ai-comment/` | AI 분석 코멘트 생성 (선택, 기업 허용 확인 후) | 전체 |
+| GET | `/api/management/ai-comment/?(기간)` | AI 분석 코멘트: 대상 분기·최신 코멘트·`stale_reason`(prompt/data)·`abilities`(버튼 가능 여부·안내·관리자 확인 문구). AI 호출 없음 | 전체 |
+| POST | `/api/management/ai-comment/` | 분석 생성 `{year, quarter, expected_latest_id, consent}` — 끝난 분기·허락·권한 확인, 다른 사람이 먼저 분석했으면 409, AI 오류는 502(`retryable`) | 전체 |
 
 ## 4. 생산팀
 
@@ -154,3 +155,4 @@
 - 2026-11-04: 경영지원 관리 엑셀 이관 API(미리보기·저장) 추가 (6-2단계)
 - 2026-11-04: 경영지원 관리 장부 엑셀 내려받기 API 추가 (6-3단계)
 - 2026-11-04: 경영지원 상세 API 추가
+- 2026-11-04: AI 분석 코멘트 조회·생성 API (8단계, 조원 방식)

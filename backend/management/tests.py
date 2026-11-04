@@ -1,6 +1,6 @@
 import json
 from datetime import date
-from io import BytesIO
+from io import BytesIO, StringIO
 from pathlib import Path
 from unittest.mock import patch
 
@@ -10,7 +10,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 
 from .audit import AuditForbiddenFieldError, record_audit
-from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
+from .models import AiComment, AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
 from .rules import CLOSED, CURRENT, FUTURE, month_state
 
 M = User.Team.MANAGEMENT
@@ -840,3 +840,117 @@ class DetailMetricsTests(APITestCase):
             self.assertIn(key, res.data)
         self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
         self.assertEqual(self.client.get("/api/management/detail/").status_code, 403)
+
+
+class AiCommentTests(APITestCase):
+    """AI 분석 코멘트 (조원 저장소 ai/* 규칙) — 실제 AI 는 부르지 않고 request_ai 를 바꿔 끼운다"""
+
+    URL = "/api/management/ai-comment/"
+    FAKE = {"summary": ["매출은 300원입니다."], "shortfalls": [], "improvements": ["다음 분기 목표를 점검합니다."]}
+
+    def setUp(self):
+        for m in (7, 8, 9):
+            finance(2026, m, product=100)
+        self.mgmt = make_user("mgmt", User.Role.MEMBER, [M])
+        self.client.force_authenticate(self.mgmt)
+
+    def generate(self, expected=None, **kw):
+        return self.client.post(self.URL, {"year": 2026, "quarter": 3, "expected_latest_id": expected, **kw}, format="json")
+
+    def test_phrases(self):
+        from .ai_comment import achievement_text, progress_text, won_short
+
+        self.assertEqual(achievement_text(82.35), "82.4%로 17.6%p 부족")
+        self.assertEqual(achievement_text(100), "100.0%로 목표 달성")
+        self.assertEqual(progress_text(60, 75), "연간 달성률 60.0%로 경과율 75.0% 대비 15.0%p 뒤처짐")
+        self.assertEqual((won_short(709_000_000), won_short(66_680_000), won_short(-5000)), ("7.09억원", "6,668만원", "-5,000원"))
+
+    def test_abilities(self):
+        from .ai_comment import ADMIN_CONSENT_NOTICE, REAL_DATA_BLOCKED_NOTICE, abilities
+
+        admin = make_user("adm", User.Role.ADMIN)
+        prod = make_user("prod", User.Role.LEADER, [P], [P])
+        self.assertIn("(1월 1일부터)", abilities(self.mgmt, 2026, 4, TODAY, True)["notice"])  # 진행 중 분기 → 끝난 다음 날부터
+        self.assertIn("확정된 달이 없어", abilities(self.mgmt, 2026, 3, TODAY, False)["notice"])
+        self.assertTrue(abilities(self.mgmt, 2026, 3, TODAY, True)["can_generate"])
+        self.assertEqual(abilities(self.mgmt, 2026, 3, TODAY, True, real_blocked=True)["notice"], REAL_DATA_BLOCKED_NOTICE)
+        self.assertEqual(abilities(admin, 2026, 3, TODAY, True, uploaded=True)["consent_notice"], ADMIN_CONSENT_NOTICE)
+        self.assertFalse(abilities(prod, 2026, 3, TODAY, True)["can_generate"])
+
+    def test_input_has_no_partner_names_and_hash_is_stable(self):
+        from common.periods import make_period
+
+        from .ai_comment import annotations, build_input, hash_input
+        from .metrics import management_summary
+
+        LedgerEntry.objects.create(year=2026, month=9, kind="ar", ar_status="long_overdue", partner_name="비밀거래처", amount=500)
+        summary = management_summary(make_period("quarter", 2026, quarter=3), TODAY)
+        data = build_input(summary, 3)
+        self.assertNotIn("비밀거래처", json.dumps(data, ensure_ascii=False))
+        self.assertEqual(data["receivables"]["longOverdue"], {"amount": "500원", "count": 1})
+        self.assertEqual(annotations(summary, 3)["long_overdue"], [{"name": "비밀거래처", "amount": "500원"}])
+        self.assertEqual(hash_input(data), hash_input(json.loads(json.dumps(data))))
+
+    def test_normalize_truncates(self):
+        from .ai_comment import normalize
+
+        result, report = normalize({"summary": ["가" * 90, "a", "b", "c"], "shortfalls": [" "], "improvements": []})
+        self.assertEqual((len(result["summary"][0]), result["summary"][0][-1], len(result["summary"])), (80, "…", 3))
+        self.assertEqual((report, result["shortfalls"]), ({"truncated": 1, "dropped": 1}, []))
+        self.assertIsNone(normalize({"summary": [], "shortfalls": [], "improvements": []}))
+
+    @patch("management.ai_client.request_ai")
+    def test_generate_view_and_stale(self, request_ai):
+        request_ai.return_value = (self.FAKE, "claude-test")
+        with self.settings(AI_ALLOW_REAL_DATA=True):
+            view = self.client.get(self.URL + "?year=2026&period=quarter&quarter=3").data
+            self.assertEqual((view["quarter_label"], view["latest"], view["abilities"]["can_generate"]), ("2026년 3분기", None, True))
+            self.assertEqual(self.generate().status_code, 200)
+            # 연간 보기 → 확정된 달이 있는 마지막 분기
+            view = self.client.get(self.URL + "?year=2026&period=year").data
+        self.assertEqual((view["quarter"], view["latest"]["method"], view["stale_reason"]), (3, "ai", None))
+        self.assertIn("headline", view["latest"]["result"])
+        self.assertEqual(view["latest"]["result"]["summary"], self.FAKE["summary"])
+        MonthlyFinance.objects.filter(month=9).update(product_sales=999)
+        self.assertEqual(self.client.get(self.URL + "?year=2026&period=quarter&quarter=3").data["stale_reason"], "data")
+
+    @patch("management.ai_client.request_ai")
+    def test_generate_rules(self, request_ai):
+        from .ai_client import AiError
+
+        request_ai.return_value = (self.FAKE, "claude-test")
+        # 허락 전 배포 서버(테스트는 DEBUG=False): 경영지원 팀원은 막히고, 관리자는 확인(consent) 후에만
+        self.assertEqual(self.generate().status_code, 400)
+        self.client.force_authenticate(make_user("adm", User.Role.ADMIN))
+        self.assertEqual(self.generate().status_code, 400)
+        self.assertEqual(self.generate(consent=True).status_code, 200)
+        latest = AiComment.objects.get().id
+        with self.settings(AI_ALLOW_REAL_DATA=True):
+            self.assertEqual(self.generate(expected=None).status_code, 409)  # 그 사이 다른 사람이 분석함
+            request_ai.side_effect = AiError("rate-limit")
+            res = self.generate(expected=latest)
+            self.assertEqual((res.status_code, res.data["retryable"]), (502, True))
+            self.assertEqual(self.client.post(self.URL, {"year": 2026, "quarter": 4, "expected_latest_id": latest}, format="json").status_code, 400)
+        self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
+        self.assertEqual(self.client.get(self.URL).status_code, 403)
+        self.assertEqual(AiComment.objects.count(), 1)
+
+    def test_uploaded_month_blocks_until_allowed(self):
+        record_audit(actor=self.mgmt, screen="ledger-import", action="IMPORT", target_type="LedgerMonth", target_id="2026-08", target_label="x")
+        from .ai_comment import has_uploaded_input
+
+        self.assertTrue(has_uploaded_input(2026, 3))
+        self.assertFalse(has_uploaded_input(2027, 4))
+        with self.settings(AI_ALLOW_REAL_DATA=False, DEBUG=True):
+            view = self.client.get(self.URL + "?year=2026&period=quarter&quarter=3").data
+        self.assertIn("엑셀 이관", view["abilities"]["notice"])
+
+    def test_seed_examples(self):
+        from django.core.management import call_command
+
+        call_command("seed_ai_examples", stdout=StringIO())
+        self.assertEqual(AiComment.objects.filter(model="example").count(), 1)  # 확정 데이터가 있는 끝난 분기는 2026 3분기뿐
+        call_command("seed_ai_examples", stdout=StringIO())
+        self.assertEqual(AiComment.objects.count(), 1)
+        call_command("seed_ai_examples", "--remove", stdout=StringIO())
+        self.assertEqual(AiComment.objects.count(), 0)

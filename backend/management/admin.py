@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
+from .models import AiComment, AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
 
 
 class OtherExpenseInline(admin.TabularInline):
@@ -54,3 +54,9 @@ class ReceivableAdmin(admin.ModelAdmin):
     list_display = ("customer_name", "occurred_on", "amount", "is_collected", "collected_on", "deleted_at")
     list_filter = ("is_collected",)
     search_fields = ("customer_name",)
+
+
+@admin.register(AiComment)
+class AiCommentAdmin(admin.ModelAdmin):
+    list_display = ("year", "quarter", "model", "prompt_version", "created_by", "created_at")
+    list_filter = ("model",)

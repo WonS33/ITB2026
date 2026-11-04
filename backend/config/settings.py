@@ -189,3 +189,12 @@ REST_FRAMEWORK = {
         'rest_framework.permissions.IsAuthenticated',
     ],
 }
+
+# 경영지원 AI 분석 코멘트 (외부 AI = Claude API, 백엔드에서만 호출)
+# - ANTHROPIC_API_KEY: API 키 (.env 에만, 화면 코드에 넣지 않음)
+# - AI_ALLOW_REAL_DATA: 대표님이 회사 재무 합계 숫자를 외부 AI 로 보내도 된다고 허락했는지 (기본 False)
+#   False 이면 배포 서버(DEBUG=False)와 엑셀 이관 데이터가 들어간 분기는 관리자(대표) 계정만 확인창을 거쳐 분석
+# - AI_MOCK: 개발용 모의 응답 (true / fail) — DEBUG 일 때만
+ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "").strip()
+AI_ALLOW_REAL_DATA = os.environ.get("AI_ALLOW_REAL_DATA", "False") == "True"
+AI_MOCK = os.environ.get("AI_MOCK", "")

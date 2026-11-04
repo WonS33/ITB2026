@@ -8,6 +8,7 @@ import PeriodSelector from '@/components/PeriodSelector.vue'
 import ShareDoughnut from '@/components/ShareDoughnut.vue'
 import FlowChart from '@/components/management/FlowChart.vue'
 import TargetCard from '@/components/management/TargetCard.vue'
+import AiCommentCard from '@/components/management/AiCommentCard.vue'
 import { industryColor, OTHER_COLOR, SERIES_COLORS } from '@/charts'
 import { pctText, won, wonShort } from '@/money'
 import { period } from '@/period'
@@ -104,6 +105,8 @@ async function downloadTargets() {
     <div v-if="!s" class="text-muted">불러오는 중…</div>
     <template v-else>
       <div v-if="notice" class="alert py-2" :class="notice.tone === 'warning' ? 'alert-warning' : 'alert-light border'">{{ notice.text }}</div>
+
+      <AiCommentCard />
 
       <!-- ① KPI -->
       <div class="row g-3 mb-4">

@@ -251,3 +251,32 @@ class Receivable(TimeStampedModel):
 
     def __str__(self):
         return f"{self.customer_name} · {self.occurred_on} 발생"
+
+
+class AiComment(models.Model):
+    """AI 분석 코멘트 (조원 저장소 mgmt_ai_comment 를 옮김) — 분기마다 여러 번 만들 수 있고 가장 최근 것을 보여 준다
+
+    - input_summary: 외부 AI 로 보낸 합계 숫자 그대로 (거래처명·직원 이름·건별 내역 없음)
+    - input_hash: 그 입력의 SHA-256 — 지금 데이터와 다르면 "최신이 아님" 안내
+    - model: 실제 모델 이름 / "mock"(개발용 모의 응답) / "example"(seed_ai_examples 예시)
+    """
+
+    year = models.PositiveSmallIntegerField("연도")
+    quarter = models.PositiveSmallIntegerField("분기")
+    input_summary = models.JSONField("보낸 입력")
+    result = models.JSONField("분석 결과")  # {summary, shortfalls, improvements, headline, long_overdue}
+    input_hash = models.CharField("입력 해시", max_length=64)
+    model = models.CharField("생성 방식·모델", max_length=60)
+    prompt_version = models.CharField("프롬프트 버전", max_length=30)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="생성한 사람", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField("생성 일시", default=timezone.now)
+
+    class Meta:
+        verbose_name = "AI 분석 코멘트"
+        verbose_name_plural = verbose_name
+        indexes = [models.Index(fields=["year", "quarter", "created_at"])]
+
+    def __str__(self):
+        return f"{self.year}년 {self.quarter}분기 AI 분석 ({self.model})"
