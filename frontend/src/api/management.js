@@ -1,4 +1,5 @@
 import { apiFetch, downloadFile } from './client'
+import { periodParams } from '@/period'
 
 // 월간 입력 (월별 실적) — intent: draft(임시저장) / confirm(확정) / update_confirmed(확정된 달 수정)
 // body.expected_updated_at: 화면을 불러올 때 받은 updated_at (다른 사람이 먼저 저장했으면 409)
@@ -26,3 +27,6 @@ export const getTarget = (year) => apiFetch(`/management/targets/${year}/`)
 export const saveTarget = (year, body) => apiFetch(`/management/targets/${year}/`, { method: 'PUT', body })
 export const getCategories = () => apiFetch('/management/expense-categories/')
 export const saveCategories = (body) => apiFetch('/management/expense-categories/', { method: 'PUT', body })
+// 메인 대시보드 (기간 보기: 당월·분기·연간) + 목표 대비 실적 엑셀
+export const getDashboard = (period) => apiFetch(`/management/dashboard/?${periodParams(period)}`)
+export const exportTargets = (year) => downloadFile(`/management/targets/${year}/export/`, `목표실적_${year}.xlsx`)

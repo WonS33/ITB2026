@@ -13,6 +13,7 @@ const props = defineProps({
   unit: { type: String, default: '대' },
   size: { type: Number, default: 180 }, // 도넛 크기(px)
   clickable: { type: Boolean, default: false }, // true면 조각·표 줄을 누를 때 select(이름)을 알린다
+  valueHeader: { type: String, default: '' }, // 값 열 제목 (비우면 단위에 따라 횟수·대수)
 })
 const emit = defineEmits(['select'])
 const pick = (name) => props.clickable && emit('select', name)
@@ -45,7 +46,7 @@ const options = computed(() => ({
   plugins: {
     legend: { display: false }, // 오른쪽 범례 표로 대신함
     tooltip: {
-      callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw}${props.unit} (${percent(ctx.raw, props.total)}%)` },
+      callbacks: { label: (ctx) => `${ctx.label}: ${ctx.raw.toLocaleString()}${props.unit} (${percent(ctx.raw, props.total)}%)` },
     },
   },
 }))
@@ -60,7 +61,7 @@ const options = computed(() => ({
       </div>
       <table class="table table-sm small mb-0 w-auto">
         <thead>
-          <tr><th>{{ nameHeader }}</th><th class="text-end">{{ unit === '회' ? '횟수' : '대수' }}</th><th class="text-end">비중</th></tr>
+          <tr><th>{{ nameHeader }}</th><th class="text-end">{{ valueHeader || (unit === '회' ? '횟수' : '대수') }}</th><th class="text-end">비중</th></tr>
         </thead>
         <tbody>
           <tr v-for="i in items" :key="i.name" :role="clickable ? 'button' : undefined" @click="pick(i.name)">

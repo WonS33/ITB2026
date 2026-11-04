@@ -198,3 +198,144 @@ def build_workbook(sheets):
     buffer = BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
+
+
+# ---------- 목표 대비 실적 엑셀 (조원 저장소 settings/export/targets-layout.ts 를 옮김) ----------
+# 시트 한 장("2026"): "연간 목표매출액" 블록(1~4분기 목표, F = SUM) → "목표매출 달성률" 블록(월 행 + 분기마다 F = SUM)
+# - 월 행: 확정 = 그 달 매출 + 적요 "월 목표 N (분기 ÷ 3)", 임시저장·입력 없음(마감된 달) = 금액 빈칸 + 빨간 "… — 합계 제외"
+# - 분기 메모(H): 달성률 / 진행 중 / 미확정 / 확정된 달 없음 — 확정된 달이 없으면 0.0% 대신 사실만
+# - 빨간색: 분기가 끝났고 3개월 모두 확정됐는데 미달일 때만 (대시보드와 같은 규칙)
+# - 맨 아래 H 라벨 + I 값: 연간 실적 합계, 목표매출 달성률, 부족분 (엑셀 수식)
+
+PERCENT = "0.0%"
+
+
+def targets_file_name(year):
+    return f"목표실적_{year}.xlsx"
+
+
+def build_targets_workbook(year, summary, today=None):
+    """summary: metrics.management_summary(연간 기간) — 대시보드와 같은 계산 결과"""
+    today = today or timezone.localdate()
+    targets = summary["targets"]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = str(year)
+    ws.page_setup.orientation = "landscape"
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+    ws.sheet_properties.pageSetUpPr.fitToPage = True
+    ws.page_setup.fitToHeight = 0
+    for col, width in ((C, 16), (D, 18), (E, 34), (F, 18), (H, 46), (9, 18)):
+        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = width
+
+    def header(row):
+        for col, text in ((C, "구분"), (D, "금액"), (E, "적요"), (F, "총액")):
+            cell = ws.cell(row=row, column=col, value=text)
+            cell.font, cell.fill, cell.border = Font(bold=True), HEADER_FILL, BOX
+            cell.alignment = Alignment(horizontal="center")
+
+    def group(row, items, memo, warn=False):
+        """items: [(이름, 금액|None, 적요|None, 적요 빨강)] → F열 합계(병합) + H열 메모. 다음 행 번호를 돌려줌"""
+        first = row
+        for name, amount, note, note_warn in items:
+            ws.cell(row=row, column=C, value=name).border = BOX
+            cell = ws.cell(row=row, column=D, value=amount)
+            cell.number_format, cell.border = MONEY, BOX
+            n = ws.cell(row=row, column=E, value=note)
+            n.border = BOX
+            if note_warn:
+                n.font = Font(color=RED)
+            ws.cell(row=row, column=F).border = BOX
+            row += 1
+        total = ws.cell(row=first, column=F, value=f"=SUM(D{first}:D{row - 1})")
+        total.number_format = MONEY
+        total.font = Font(bold=True, color=RED if warn else None)
+        total.alignment = Alignment(horizontal="center", vertical="center")
+        ws.merge_cells(start_row=first, start_column=F, end_row=row - 1, end_column=F)
+        ws.cell(row=first, column=H, value=f"← {memo}").font = Font(color=RED if warn else None, bold=warn)
+        return row, first
+
+    # ── 연간 목표매출액 ──
+    ws.cell(row=1, column=C, value="연간 목표매출액").font = Font(bold=True)
+    header(2)
+    if targets is None:
+        ws.cell(row=1, column=H, value="목표가 설정되지 않았습니다 — 목표·항목 설정에서 입력하세요").font = Font(color=RED, bold=True)
+        items = [(f"{q}분기 목표", None, None, False) for q in (1, 2, 3, 4)]
+    else:
+        items = [
+            (f"{q['quarter']}분기 목표", q["target"], "직접 입력" if q["source"] == "input" else "자동 배분", False)
+            for q in targets["quarters"]
+        ]
+    row, _ = group(3, items, f"{year}년 연간 목표매출액")
+    if targets and targets["allocation_warning"]:
+        # 분기 목표 합계 ≠ 입력한 연간 목표 — 입력값을 보조 칸으로
+        ws.cell(row=4, column=H, value="입력한 연간 목표 (분기 합계와 다름)").font = Font(color=RED)
+        ws.cell(row=4, column=9, value=targets["annual"]["target"]).number_format = MONEY
+
+    # ── 목표매출 달성률 (월 행 + 분기 그룹) ──
+    row += 1
+    ws.cell(row=row, column=C, value="목표매출 달성률").font = Font(bold=True)
+    header(row + 1)
+    row += 2
+    finance = {f.month: f for f in MonthlyFinance.objects.filter(year=year).prefetch_related("other_expenses")}
+    this_month = today.year * 12 + today.month
+    month_targets = targets["month_targets"] if targets else [None] * 12
+    group_firsts = []
+    last_row = row
+    for q in range(1, 5):
+        items = []
+        for k in (1, 2, 3):
+            m = (q - 1) * 3 + k
+            f = finance.get(m)
+            mt = month_targets[m - 1]
+            target_note = None if mt is None else f"월 목표 {mt:,} (분기 ÷ 3)"
+            if f and f.status == MonthlyFinance.Status.CONFIRMED:
+                items.append((f"{m}월", f.product_sales + f.merchandise_sales + f.service_sales, target_note, False))
+            elif f:
+                items.append((f"{m}월", None, "임시저장 — 합계 제외", True))
+            elif year * 12 + m < this_month:
+                items.append((f"{m}월", None, "입력 없음 — 합계 제외", True))
+            else:
+                items.append((f"{m}월", None, target_note, False))
+        info = targets["quarters"][q - 1] if targets else None
+        confirmed_count = sum(1 for k in (1, 2, 3) if finance.get((q - 1) * 3 + k) and finance[(q - 1) * 3 + k].status == MonthlyFinance.Status.CONFIRMED)
+        rate = lambda r: "-" if r is None else f"{r:.1f}%"  # noqa: E731
+        if info is None:
+            memo = f"{q}분기"
+        elif info["state"] == "future":
+            memo = f"{q}분기 시작 전"
+        elif info["state"] == "current":
+            elapsed = f"경과 {this_month - (year * 12 + (q - 1) * 3 + 1) + 1}/3개월"
+            memo = f"{q}분기 진행 중 ({elapsed}, 확정된 달 없음)" if not confirmed_count else f"{q}분기 달성률 {rate(info['rate'])} · 진행 중 ({elapsed})"
+        elif not confirmed_count:
+            memo = f"{q}분기 ({'·'.join(map(str, info['unconfirmed_months']))}월 미확정, 확정된 달 없음)"
+        elif info["unconfirmed_months"]:
+            memo = f"{q}분기 달성률 {rate(info['rate'])} ({'·'.join(map(str, info['unconfirmed_months']))}월 미확정)"
+        else:
+            gap = info["target"] - info["actual"]
+            memo = f"{q}분기 달성률 {rate(info['rate'])}" + (f" ({gap:,}원 부족)" if gap > 0 else " (달성)")
+        row, first = group(row, items, memo, warn=bool(info and info["warn"]))
+        group_firsts.append(first)
+        last_row = first
+
+    # ── 연간 합계·달성률·부족분 (H 라벨 + I 수식) ──
+    r = last_row + 3
+    ws.cell(row=r, column=H, value="연간 실적 합계")
+    cell = ws.cell(row=r, column=9, value="=" + "+".join(f"F{x}" for x in group_firsts))
+    cell.number_format = MONEY
+    if targets:
+        annual = targets["annual"]
+        ws.cell(row=r + 1, column=H, value="목표매출 달성률")
+        cell = ws.cell(row=r + 1, column=9, value=f"=IF({annual['target']}=0,0,I{r}/{annual['target']})")
+        cell.number_format = PERCENT
+        year_ended = year * 12 + 12 < this_month
+        all_confirmed = len(annual["confirmed_months"]) == 12
+        warn = year_ended and all_confirmed and annual["actual"] < annual["target"]
+        ws.cell(row=r + 2, column=H, value="부족분").font = Font(color=RED if warn else None)
+        cell = ws.cell(row=r + 2, column=9, value=f"=MAX({annual['target']}-I{r},0)")
+        cell.number_format = MONEY
+        cell.font = Font(color=RED if warn else None)
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()

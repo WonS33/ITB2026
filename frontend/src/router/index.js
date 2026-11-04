@@ -8,7 +8,7 @@ const router = createRouter({
     { path: '/', redirect: () => homePath() },
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
     // 팀 화면: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
-    // 경영지원팀 (조원 저장소 기능을 옮기는 중 — 대시보드는 아직 "구현 예정")
+    // 경영지원팀 (조원 저장소 yeonk-rgb/newtork-dashboard 기능을 옮김)
     {
       path: '/management',
       component: () => import('@/components/TeamLayout.vue'),

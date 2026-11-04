@@ -28,6 +28,7 @@ SCREEN_LABELS = {
     "entry-export": "월간 입력 엑셀 다운로드",
     "targets": "목표 설정",
     "expense-categories": "지출 항목",
+    "targets-export": "목표 대비 실적 엑셀 다운로드",
 }
 
 _FORBIDDEN = re.compile(r"pass(word|wd)?|hash|token|secret|session|salt|credential|apikey|api_key", re.I)

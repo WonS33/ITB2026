@@ -8,7 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 
 from .audit import AuditForbiddenFieldError, record_audit
-from .models import AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
+from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
 from .rules import CLOSED, CURRENT, FUTURE, month_state
 
 M = User.Team.MANAGEMENT
@@ -343,3 +343,120 @@ class ExpenseCategoryApiTests(APITestCase):
     def test_missing_row_is_conflict(self):
         # 그 사이 다른 사람이 항목을 추가했으면 화면 목록에 없는 항목이 생김
         self.assertEqual(self.save([self.item(self.a)]).status_code, 409)
+
+
+def finance(year, month, status="confirmed", product=100, merch=0, service=0, purchase=0, material=0, expense=0):
+    return MonthlyFinance.objects.create(
+        year=year, month=month, status=status, product_sales=product, merchandise_sales=merch,
+        service_sales=service, merchandise_purchase=purchase, material_purchase=material, expense=expense,
+    )
+
+
+class MetricsTests(APITestCase):
+    """경영지원 지표 (조원 저장소 metrics 규칙)"""
+
+    def summary(self, kind, year=2026, **kw):
+        from common.periods import make_period
+
+        from .metrics import management_summary
+
+        return management_summary(make_period(kind, year, **kw), TODAY)
+
+    def test_only_confirmed_months_and_profit(self):
+        finance(2026, 7, product=200, merch=100, purchase=50, expense=30)
+        finance(2026, 8, status="draft", product=999)
+        ad = ExpenseCategory.objects.create(name="광고선전비")
+        OtherExpense.objects.create(monthly=MonthlyFinance.objects.get(month=7), category=ad, amount=20)
+        s = self.summary("quarter", quarter=3)
+        self.assertEqual(s["revenue"]["total"], 300)  # 8월(임시저장)은 빠짐
+        self.assertEqual(s["costs"]["total"], 100)  # 매입 50 + 경비 30 + 그 외 20
+        self.assertEqual(s["profit"], {"amount": 200, "margin": 66.7})
+        c = s["confirmation"]
+        self.assertEqual(c["unconfirmed_months"], [{"year": 2026, "month": 8, "reason": "draft"}, {"year": 2026, "month": 9, "reason": "missing"}])
+        self.assertTrue(c["is_partial"])
+
+    def test_aligned_comparison(self):
+        # 3분기는 7월만 확정 → 2분기도 첫 달(4월)끼리만 비교
+        finance(2026, 7, product=150)
+        finance(2026, 4, product=100)
+        finance(2026, 5, product=500)
+        s = self.summary("quarter", quarter=3)
+        prev = s["changes"]["previous"]
+        self.assertEqual(prev["aligned"]["base"], [{"year": 2026, "month": 4}])
+        self.assertEqual(prev["revenue"]["rate"], 50.0)
+        self.assertEqual(s["changes"]["last_year"]["revenue"], {"rate": None, "reason": "no-data"})
+
+    def test_no_current_data_is_not_minus_100(self):
+        finance(2026, 6, product=100)
+        s = self.summary("quarter", quarter=3)
+        self.assertEqual(s["changes"]["previous"]["revenue"]["reason"], "no-current-data")
+
+    def test_targets_and_annual_progress(self):
+        AnnualSalesTarget.objects.create(year=2026, target_amount=1200)  # 분기 300, 월 100
+        for m in range(1, 7):
+            finance(2026, m, product=100)
+        finance(2026, 7, product=50)  # 3분기는 7월만
+        finance(2026, 8, status="draft")
+        s = self.summary("month", month=7)
+        t = s["targets"]
+        self.assertEqual(t["period"], {"kind": "quarter-progress", "target": 300, "actual": 50, "rate": 16.7})
+        self.assertEqual(t["month"]["rate"], 50.0)  # 7월 목표 100 대비 50
+        q = {x["quarter"]: x for x in t["quarters"]}
+        self.assertEqual((q[1]["rate"], q[1]["state"], q[1]["warn"]), (100.0, "ended", False))
+        self.assertEqual(q[3]["unconfirmed_months"], [8, 9])  # 끝난 분기인데 미확정
+        self.assertFalse(q[3]["warn"])  # 미확정 달이 있으면 빨강 대신 안내
+        self.assertEqual(q[4]["state"], "current")
+        a = t["annual"]
+        self.assertEqual((a["actual"], a["basis_month"], a["elapsed"]), (650, 7, 58.3))
+        self.assertEqual(a["excluded_months"], [8, 9, 10])
+
+    def test_no_target(self):
+        self.assertIsNone(self.summary("year")["targets"])
+
+    def test_trend_statuses(self):
+        finance(2026, 9, product=10)
+        finance(2026, 10, status="draft", product=20)
+        points = self.summary("quarter", quarter=4)["trend"]
+        self.assertEqual(len(points), 12)
+        by = {(p["year"], p["month"]): p for p in points}
+        self.assertEqual(by[(2026, 9)]["status"], "confirmed")
+        self.assertEqual(by[(2026, 10)]["revenue"], 20)  # 임시저장도 값은 보이되 status로 구분
+        self.assertEqual(by[(2026, 11)]["status"], "pending")
+        self.assertEqual(by[(2026, 1)]["status"], "missing")
+
+    def test_receivables_last_month_with_entries(self):
+        AR = LedgerEntry.Kind.AR
+        LedgerEntry.objects.create(year=2026, month=9, kind=AR, ar_status="long_overdue", partner_name="가", amount=100)
+        LedgerEntry.objects.create(year=2026, month=10, kind=AR, ar_status="long_overdue", partner_name="가", amount=70)
+        LedgerEntry.objects.create(year=2026, month=10, kind=AR, ar_status="scheduled", partner_name="나", amount=30)
+        LedgerEntry.objects.create(year=2026, month=10, kind=AR, ar_status="collected", partner_name="다", amount=5)
+        r = self.summary("quarter", quarter=4)["receivables"]
+        self.assertEqual((r["month"], r["total"], r["customer_count"]), ({"year": 2026, "month": 10}, 100, 2))
+        self.assertEqual(r["collected"]["amount"], 5)  # 당월 수금은 미수에 넣지 않음
+        self.assertIsNone(self.summary("quarter", quarter=2)["receivables"]["month"])
+
+
+@patch("management.dashboard_views.timezone.localdate", return_value=TODAY)
+class DashboardApiTests(APITestCase):
+    def test_dashboard_and_permissions(self, _):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+        res = self.client.get("/api/management/dashboard/?year=2026&period=quarter&quarter=3")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("production", res.data["teams"])
+        self.assertIn("service", res.data["teams"])
+        self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
+        self.assertEqual(self.client.get("/api/management/dashboard/").status_code, 403)
+
+    def test_targets_export(self, _):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+        AnnualSalesTarget.objects.create(year=2026, target_amount=1200, q4_target=600)
+        finance(2026, 1, product=100)
+        finance(2026, 2, status="draft")
+        res = self.client.get("/api/management/targets/2026/export/")
+        self.assertEqual(res.status_code, 200)
+        ws = load_workbook(BytesIO(res.content))["2026"]
+        cells = {(r, c): ws.cell(r, c).value for r in range(1, ws.max_row + 1) for c in range(1, 10)}
+        self.assertIn("자동 배분", cells.values())
+        self.assertIn("임시저장 — 합계 제외", cells.values())
+        self.assertTrue(any(str(v).startswith("← 1분기 (2·3월 미확정") or str(v).startswith("← 1분기 달성률") for v in cells.values()))
+        self.assertEqual(AuditLog.objects.get().screen, "targets-export")

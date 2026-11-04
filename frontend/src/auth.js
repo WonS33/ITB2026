@@ -9,7 +9,7 @@ export const auth = reactive({
 })
 
 export const TEAM_LABELS = { management: '경영지원팀', production: '생산팀', service: '서비스팀' }
-// 화면이 있는 팀만 (경영지원팀은 메뉴만 있고 화면은 구현 예정)
+// 화면이 있는 팀만
 export const TEAM_ROUTES = { management: '/management', production: '/production', service: '/service' }
 // 상단 메뉴에 보일 팀: 열람 권한이 있고 화면이 있는 팀
 export const menuTeams = () => (auth.user?.view_teams ?? []).filter((team) => TEAM_ROUTES[team])
@@ -40,10 +40,8 @@ export async function changePassword(currentPassword, newPassword) {
 export const canView = (team) => !!auth.user && auth.user.view_teams.includes(team)
 export const canEdit = (team) => !!auth.user && auth.user.edit_teams.includes(team)
 
-// 로그인 직후·첫 화면으로 보낼 주소: 볼 수 있는 첫 팀 화면
-// (경영지원팀 화면은 아직 "구현 예정"이라 다른 팀 화면이 있으면 그쪽을 먼저 연다)
+// 로그인 직후·첫 화면으로 보낼 주소: 볼 수 있는 첫 팀 화면 (경영지원팀 소속이면 경영지원팀 메인)
 export function homePath() {
-  const teams = menuTeams()
-  const team = teams.find((t) => t !== 'management') ?? teams[0]
+  const team = menuTeams()[0]
   return team ? TEAM_ROUTES[team] : '/forbidden'
 }
