@@ -106,3 +106,83 @@ class CategoriesSaveSerializer(serializers.Serializer):
                 raise serializers.ValidationError(f'같은 이름의 항목이 있습니다: "{item["name"]}"')
             seen.add(key)
         return items
+
+
+class ReceivableSerializer(serializers.Serializer):
+    """미수금 등록·수정 (수금 완료 건을 수정할 때만 collected_on)"""
+
+    customer_name = serializers.CharField(max_length=60, trim_whitespace=True)
+    occurred_on = serializers.DateField(error_messages={"invalid": "날짜 형식이 올바르지 않습니다."})
+    amount = amount_field()
+    due_on = serializers.DateField(allow_null=True, required=False, default=None)
+    note = serializers.CharField(max_length=200, allow_blank=True, required=False, default="", trim_whitespace=True)
+    collected_on = serializers.DateField(allow_null=True, required=False, default=None)
+    expected_updated_at = serializers.DateTimeField(required=False, allow_null=True, default=None)
+
+    def validate_customer_name(self, value):
+        value = " ".join(value.split())
+        if not value:
+            raise serializers.ValidationError("거래처를 입력하세요.")
+        if len(value) > 50:
+            raise serializers.ValidationError("거래처는 50자까지 입력할 수 있습니다.")
+        return value
+
+    def validate_amount(self, value):
+        if value <= 0:
+            raise serializers.ValidationError("금액을 입력하세요.")
+        return value
+
+
+class ReceivableActionSerializer(serializers.Serializer):
+    """수금 처리(collected_on 필수)·수금 취소·숨김·복구"""
+
+    expected_updated_at = serializers.DateTimeField()
+    collected_on = serializers.DateField(allow_null=True, required=False, default=None)
+
+
+class LedgerFieldsSerializer(serializers.Serializer):
+    """경영지원 관리 한 행 — 구분(kind)마다 쓰는 칸이 다르다 (조원 저장소 ledger/schemas.ts)
+
+    외상매출금: 상태(필수)·거래처코드(선택, 숫자 10자리) / 외상매입금: 매입유형(필수) / 업체: 비용유형(필수)·자동이체
+    구분에 맞지 않는 칸은 빈 값으로 바꿔 저장한다
+    """
+
+    kind = serializers.ChoiceField(choices=["ar", "ap", "accrued_staff", "accrued_vendor"])
+    ar_status = serializers.ChoiceField(choices=["long_overdue", "collected", "scheduled"], allow_blank=True, required=False, default="")
+    purchase_type = serializers.ChoiceField(choices=["goods", "raw_material"], allow_blank=True, required=False, default="")
+    expense_type = serializers.ChoiceField(choices=["advertising", "entertainment", "other"], allow_blank=True, required=False, default="")
+    auto_transfer = serializers.BooleanField(required=False, default=False)
+    partner_code = serializers.CharField(allow_blank=True, required=False, default="", trim_whitespace=True)
+    partner_name = serializers.CharField(max_length=60, allow_blank=True, trim_whitespace=True)
+    amount = amount_field()
+    note = serializers.CharField(max_length=200, allow_blank=True, required=False, default="", trim_whitespace=True)
+    due_on = serializers.DateField(allow_null=True, required=False, default=None)
+    settled_on = serializers.DateField(allow_null=True, required=False, default=None)
+
+    def validate(self, d):
+        name = " ".join(d["partner_name"].split())
+        if not name:
+            raise serializers.ValidationError({"partner_name": "거래처명을 입력하세요."})
+        if len(name) > 50:
+            raise serializers.ValidationError({"partner_name": "거래처명은 50자까지 입력할 수 있습니다."})
+        if d["amount"] <= 0:
+            raise serializers.ValidationError({"amount": "잔액을 입력하세요."})
+        kind = d["kind"]
+        if kind == "ar" and not d["ar_status"]:
+            raise serializers.ValidationError({"ar_status": "상태를 고르세요."})
+        if kind == "ap" and not d["purchase_type"]:
+            raise serializers.ValidationError({"purchase_type": "매입유형을 고르세요."})
+        if kind == "accrued_vendor" and not d["expense_type"]:
+            raise serializers.ValidationError({"expense_type": "비용유형을 고르세요."})
+        code = d["partner_code"] if kind == "ar" else ""
+        if code and not (len(code) == 10 and code.isdigit()):
+            raise serializers.ValidationError({"partner_code": "거래처코드는 숫자 10자리로 입력하세요. (예: 0000000087)"})
+        return {
+            **d,
+            "partner_name": name,
+            "partner_code": code,
+            "ar_status": d["ar_status"] if kind == "ar" else "",
+            "purchase_type": d["purchase_type"] if kind == "ap" else "",
+            "expense_type": d["expense_type"] if kind == "accrued_vendor" else "",
+            "auto_transfer": d["auto_transfer"] if kind == "accrued_vendor" else False,
+        }

@@ -8,7 +8,9 @@ export const TEAM_MENUS = {
       edit: true,
       items: [
         { label: '월간 입력', to: '/management/entry' },
+        { label: '경영지원 관리', to: '/management/ledger' },
         { label: '목표·항목 설정', to: '/management/settings' },
+        { label: '미수금 건별 기록', to: '/management/receivables' },
       ],
     },
   ],

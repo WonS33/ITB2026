@@ -170,6 +170,9 @@ hr { border-color: var(--line); opacity: 1; }
 .badge-soft-brand { background: var(--brand-soft); color: var(--brand-text); }
 /* 크게 낮음(할인 과다 점검): 글자로 알려 주고 옅은 빨강 바탕으로 눈에 띄게 */
 .badge-low { background: #fdecea; color: #a1281f; border: 1px solid #f3b8b2; font-weight: 600; }
+/* 주의(예정일 지남·저장 안 한 변경 등): Bootstrap 5.0에는 warning-emphasis 색이 없어 직접 지정. 색만으로 알리지 않고 글자도 함께 */
+.text-warn { color: #8a5a00 !important; }
+.badge-warn { background: #fff4d6; color: #8a5a00; border: 1px solid #f0d58c; }
 .progress { background: #eceae5; border-radius: 99px; }
 .progress-bar { background-color: var(--brand); }
 .progress-bar.bg-success { background-color: #1baf7a !important; }

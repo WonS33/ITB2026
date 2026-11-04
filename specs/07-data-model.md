@@ -80,9 +80,9 @@
 | `year`, `month`, `kind` | 기준년월, 구분 (`ar`·`ap`·`accrued_staff`·`accrued_vendor`) |
 | `ar_status` / `purchase_type` / `expense_type`, `auto_transfer` | 구분마다 쓰는 칸 (외상매출금 상태, 외상매입금 매입유형, 업체 비용유형·자동이체) |
 | `partner_code`, `partner_name`, `amount`, `note` | 거래처코드(외상매출금), 거래처명, 잔액, 적요 |
-| `due_on`, `settled_on`, `deleted_at` | 예정일, 완료일, 숨긴 일시(삭제 대신) |
+| `due_on`, `settled_on`, `deleted_at`, `deleted_by`, `updated_by` | 예정일, 완료일(외상매출금은 당월 수금일 때만·필수), 숨긴 일시·사람(삭제 대신), 마지막 수정자 |
 
-- 지금은 월간 입력의 [경영지원 관리에서 불러오기]만 읽는다. 장부 화면은 아직 없음(가상 데이터·Django 관리 화면).
+- 화면: 경영지원 관리(`/management/ledger`). 외상매출금 장기 미수금 + 당월 수금예정 = 대시보드 미수금, 나머지 세 구분은 월간 입력 [불러오기]의 원본
 
 ### AuditLog — 변경 기록 (2026-11-04)
 
@@ -95,7 +95,19 @@
 
 - 한 번 넣은 기록은 고치거나 지울 수 없다(모델 `save`·`delete`에서 막음, 관리 화면도 보기만). 비밀번호·토큰 같은 칸 이름은 기록하지 않는다.
 
-- 처음 설계의 `other_expense`(합계 1개)는 항목별 표(ExpenseCategory·OtherExpense)로, `receivables`(월 합계)는 미수금 단계에서 따로 만든다.
+### Receivable — 미수금 건별 기록 (2026-11-04)
+
+| 필드 | 설명 |
+|---|---|
+| `customer_name`, `occurred_on`, `amount` | 거래처, 발생일, 금액 |
+| `due_on` | 수금 예정일 (선택) |
+| `is_collected`, `collected_on` | 수금 완료 여부, 수금일 |
+| `note` | 비고 |
+| `deleted_at`, `deleted_by` | 숨김(삭제 대신) — 목록·통계에서 빠지고 복구 가능 |
+
+- 건별 메모·수금 기록용. 대시보드 미수금은 LedgerEntry 외상매출금 기준(조원 저장소 2026-10-26 결정)
+
+- 처음 설계의 `other_expense`(합계 1개)는 항목별 표(ExpenseCategory·OtherExpense)로, `receivables`(월 합계)는 Receivable(건별)·LedgerEntry 외상매출금(대시보드)으로 나눴다.
 
 ## 3. 생산팀
 
@@ -288,3 +300,5 @@
 - 2026-11-04: 경영지원팀 MonthlyFinance 구현 — 조원 저장소 설계를 따라 `status`(임시저장·확정)·`cash_balance` 추가, 그 외 지출을 ExpenseCategory·OtherExpense로 나눔, `receivables`는 미수금 단계로 미룸 (사용자 결정: 조원 경영지원팀 기능 옮기기)
 - 2026-11-04: LedgerEntry(경영지원 관리 장부)·AuditLog(변경 기록) 추가 — 조원 저장소 설계를 따름 (사용자 요청)
 - 2026-11-04: AnnualSalesTarget에 분기 목표(`q1_target`~`q4_target`, 선택)·`headcount`(선택) 추가, ExpenseCategory에 `updated_at` 추가 — 조원 저장소 설계를 따름(목표·항목 설정 3단계)
+- 2026-11-04: Receivable(미수금 건별 기록) 추가 — 조원 저장소 설계를 따름 (5단계)
+- 2026-11-04: LedgerEntry에 `deleted_by`·`updated_by` 추가 (장부 화면, 6-1단계)

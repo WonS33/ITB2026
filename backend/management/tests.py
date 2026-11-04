@@ -8,7 +8,7 @@ from rest_framework.test import APITestCase
 from accounts.models import User
 
 from .audit import AuditForbiddenFieldError, record_audit
-from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
+from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
 from .rules import CLOSED, CURRENT, FUTURE, month_state
 
 M = User.Team.MANAGEMENT
@@ -460,3 +460,179 @@ class DashboardApiTests(APITestCase):
         self.assertIn("임시저장 — 합계 제외", cells.values())
         self.assertTrue(any(str(v).startswith("← 1분기 (2·3월 미확정") or str(v).startswith("← 1분기 달성률") for v in cells.values()))
         self.assertEqual(AuditLog.objects.get().screen, "targets-export")
+
+
+@patch("management.receivables_views.timezone.localdate", return_value=TODAY)
+class ReceivableApiTests(APITestCase):
+    """미수금 건별 기록 (조원 저장소 receivables 규칙)"""
+
+    def setUp(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+
+    def create(self, **kw):
+        body = {"customer_name": "  가나   상사 ", "occurred_on": "2026-07-01", "amount": 1000, "due_on": "2026-08-01", "note": "", **kw}
+        return self.client.post("/api/management/receivables/", body, format="json")
+
+    def row(self, pk):
+        rows = self.client.get("/api/management/receivables/").data["rows"]
+        return next(r for r in rows if r["id"] == pk)
+
+    def act(self, pk, action, **kw):
+        body = {"expected_updated_at": self.row(pk)["updated_at"], **kw}
+        return self.client.post(f"/api/management/receivables/{pk}/{action}/", body, format="json")
+
+    def test_create_status_and_audit(self, _):
+        self.assertEqual(self.create().status_code, 201)
+        r = Receivable.objects.get()
+        self.assertEqual(r.customer_name, "가나 상사")  # 공백 정리
+        row = self.row(r.pk)
+        self.assertEqual((row["age_days"], row["over90"], row["overdue"]), (126, True, True))
+        log = AuditLog.objects.get()
+        self.assertEqual((log.screen, log.action, log.target_label), ("receivables", "CREATE", "가나 상사 · 2026-07-01 발생"))
+
+    def test_date_rules(self, _):
+        self.assertEqual(self.create(occurred_on="2026-12-01").status_code, 400)  # 미래 발생일
+        self.assertEqual(self.create(due_on="2026-06-01").status_code, 400)  # 예정일 < 발생일
+        self.assertEqual(self.create(amount=0).status_code, 400)
+
+    def test_collect_uncollect_hide_restore(self, _):
+        self.create()
+        pk = Receivable.objects.get().pk
+        self.assertEqual(self.act(pk, "collect", collected_on="2026-12-01").status_code, 400)  # 미래 수금일
+        self.assertEqual(self.act(pk, "collect", collected_on="2026-10-01").status_code, 200)
+        self.assertTrue(Receivable.objects.get().is_collected)
+        self.assertEqual(self.act(pk, "collect", collected_on="2026-10-01").status_code, 400)  # 이미 수금
+        self.assertEqual(self.act(pk, "uncollect").status_code, 200)
+        self.assertEqual(self.act(pk, "hide").status_code, 200)
+        self.assertEqual(self.act(pk, "collect", collected_on="2026-10-01").status_code, 400)  # 숨긴 건
+        self.assertEqual(self.act(pk, "restore").status_code, 200)
+        actions = list(AuditLog.objects.order_by("id").values_list("action", flat=True))
+        self.assertEqual(actions, ["CREATE", "COLLECT", "UNCOLLECT", "HIDE", "RESTORE"])
+        history = self.client.get(f"/api/management/history/row/?type=Receivable&id={pk}").data["rows"]
+        self.assertEqual(history[-1]["action"], "추가")
+        self.assertEqual(history[-2]["lines"], ["상태: 미수 → 수금 완료", "수금일: (없음) → 2026-10-01"])
+
+    def test_update_and_conflict(self, _):
+        self.create()
+        pk = Receivable.objects.get().pk
+        stale = self.row(pk)["updated_at"]
+        body = {"customer_name": "가나 상사", "occurred_on": "2026-07-01", "amount": 2000, "due_on": None, "note": "",
+                "expected_updated_at": stale}
+        self.assertEqual(self.client.put(f"/api/management/receivables/{pk}/", body, format="json").status_code, 200)
+        self.assertEqual(self.client.put(f"/api/management/receivables/{pk}/", body, format="json").status_code, 409)
+        # 미수 건에 수금일을 보내면 거부
+        body = {**body, "expected_updated_at": self.row(pk)["updated_at"], "collected_on": "2026-10-01"}
+        self.assertEqual(self.client.put(f"/api/management/receivables/{pk}/", body, format="json").status_code, 400)
+
+    def test_basis_and_export(self, _):
+        self.create(amount=500)
+        LedgerEntry.objects.create(year=2026, month=10, kind="ar", ar_status="scheduled", partner_name="가", amount=300)
+        basis = self.client.get("/api/management/receivables/").data["basis"]
+        self.assertEqual((basis["ar_total"], basis["item_total"], str(basis["as_of"])), (300, 500, "2026-10-31"))
+        with patch("management.receivables_views.timezone.localdate", return_value=TODAY):
+            res = self.client.get("/api/management/receivables/export/?year=2026&period=quarter&quarter=3")
+        self.assertEqual(res.status_code, 200)
+        wb = load_workbook(BytesIO(res.content))
+        self.assertEqual(wb.sheetnames, ["미수금 통계", "미수금 상세"])
+        self.assertEqual(wb["미수금 통계"]["C1"].value, "미수금 통계 (9/30 기준)")
+        self.assertEqual(wb["미수금 상세"]["A2"].value, "가나 상사")
+
+    def test_other_team_blocked(self, _):
+        self.client.force_authenticate(make_user("svc", User.Role.LEADER, [User.Team.SERVICE], [User.Team.SERVICE]))
+        self.assertEqual(self.client.get("/api/management/receivables/").status_code, 403)
+        self.assertEqual(self.create().status_code, 403)
+
+
+class ItemReceivableTests(APITestCase):
+    def test_outstanding_at_date_and_buckets(self):
+        from .receivables import item_receivables
+
+        Receivable.objects.create(customer_name="가", occurred_on=date(2026, 1, 1), amount=100, is_collected=True, collected_on=date(2026, 3, 1))
+        Receivable.objects.create(customer_name="나", occurred_on=date(2026, 2, 20), amount=50)
+        Receivable.objects.create(customer_name="다", occurred_on=date(2026, 2, 1), amount=7, deleted_at="2026-02-02T00:00:00Z")
+        r = item_receivables(date(2026, 2, 28))  # 2월 말에는 가(3월 수금)도 아직 미수
+        self.assertEqual((r["total"], r["count"]), (150, 2))
+        self.assertEqual({i["customer_name"]: i["bucket"] for i in r["items"]}, {"가": "31-60", "나": "0-30"})
+        self.assertEqual(item_receivables(date(2026, 3, 31))["total"], 50)
+
+
+@patch("management.ledger_views.timezone.localdate", return_value=TODAY)
+class LedgerApiTests(APITestCase):
+    """경영지원 관리 장부 (조원 저장소 ledger 규칙)"""
+
+    def setUp(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+
+    def add(self, month=10, **fields):
+        body = {"year": 2026, "month": month, "fields": {"kind": "ar", "ar_status": "scheduled", "partner_name": "가나", "amount": 1100, **fields}}
+        return self.client.post("/api/management/ledger/", body, format="json")
+
+    def rows(self, month=10):
+        return self.client.get(f"/api/management/ledger/?year=2026&month={month}").data["rows"]
+
+    def test_add_rules(self, _):
+        self.assertEqual(self.add().status_code, 201)
+        self.assertEqual(self.add(month=12).status_code, 400)  # 미래 달
+        self.assertEqual(self.add(ar_status="").status_code, 400)  # 상태 필수
+        self.assertEqual(self.add(partner_code="123").status_code, 400)  # 코드 10자리
+        self.assertEqual(self.add(ar_status="collected").status_code, 400)  # 당월 수금은 완료일 필수
+        self.assertEqual(self.add(ar_status="scheduled", settled_on="2026-10-01").status_code, 400)  # 수금예정에는 완료일 없음
+        self.assertEqual(self.add(kind="ap", purchase_type="").status_code, 400)
+        res = self.add(kind="accrued_vendor", expense_type="other", auto_transfer=True, ar_status="long_overdue", partner_code="0000000087")
+        self.assertEqual(res.status_code, 201)
+        e = LedgerEntry.objects.get(kind="accrued_vendor")
+        self.assertEqual((e.ar_status, e.partner_code, e.auto_transfer), ("", "", True))  # 구분에 안 맞는 칸은 비움
+        log = AuditLog.objects.filter(action="CREATE").order_by("id").last()
+        self.assertEqual(log.target_label, "2026-10 미지급비용-업체 · 가나")
+
+    def test_update_hide_restore_and_conflict(self, _):
+        self.add(partner_code="0000000087")
+        row = self.rows()[0]
+        body = {"expected_updated_at": row["updated_at"], "fields": {"kind": "ar", "ar_status": "collected", "partner_name": "가나", "amount": 1100,
+                                                                     "partner_code": "0000000087", "settled_on": "2026-10-20"}}
+        self.assertEqual(self.client.put(f"/api/management/ledger/{row['id']}/", body, format="json").status_code, 200)
+        self.assertEqual(self.client.put(f"/api/management/ledger/{row['id']}/", body, format="json").status_code, 409)  # 옛 시각
+        log = AuditLog.objects.filter(action="UPDATE").get()
+        self.assertIn({"field": "ar_status", "label": "상태", "before": "당월 수금예정", "after": "당월 수금"}, log.changes)
+        self.assertIn({"field": "settled_on", "label": "수금 완료일", "before": None, "after": "2026-10-20"}, log.changes)
+        # 구분은 바꿀 수 없음
+        row = self.rows()[0]
+        body = {"expected_updated_at": row["updated_at"], "fields": {"kind": "ap", "purchase_type": "goods", "partner_name": "가나", "amount": 1}}
+        self.assertEqual(self.client.put(f"/api/management/ledger/{row['id']}/", body, format="json").status_code, 400)
+        res = self.client.post(f"/api/management/ledger/{row['id']}/hide/", {"expected_updated_at": row["updated_at"]}, format="json")
+        self.assertEqual(res.status_code, 200)
+        row = self.rows()[0]
+        self.assertTrue(row["hidden"])
+        res = self.client.post(f"/api/management/ledger/{row['id']}/restore/", {"expected_updated_at": row["updated_at"]}, format="json")
+        self.assertEqual(res.status_code, 200)
+        history = self.client.get(f"/api/management/history/row/?type=LedgerEntry&id={row['id']}").data["rows"]
+        self.assertEqual([h["action"] for h in history], ["복구", "숨김", "수정", "추가"])
+
+    def test_copy_previous_month(self, _):
+        self.add(month=9, ar_status="collected", settled_on="2026-09-20", partner_name="받음")
+        self.add(month=9, ar_status="long_overdue", partner_name="장기", due_on="2026-12-31")
+        self.add(month=9, kind="accrued_vendor", expense_type="other", auto_transfer=True, partner_name="통신")
+        hidden = LedgerEntry.objects.create(year=2026, month=9, kind="ap", purchase_type="goods", partner_name="숨김", amount=1, deleted_at="2026-09-30T00:00:00Z")
+        preview = self.client.get("/api/management/ledger/copy/?year=2026&month=10").data
+        self.assertEqual((preview["from"], preview["existing"], preview["source_count"], preview["total"]), ("2026-09", 0, 3, 2))
+        self.assertEqual(preview["collected"], {"count": 1, "amount": 1100})
+        body = {"year": 2026, "month": 10, "include_collected": True, "expected_source_count": 3}
+        self.assertEqual(self.client.post("/api/management/ledger/copy/", {**body, "expected_source_count": 2}, format="json").status_code, 409)
+        self.assertEqual(self.client.post("/api/management/ledger/copy/", body, format="json").status_code, 200)
+        copied = LedgerEntry.objects.filter(year=2026, month=10).order_by("created_at", "id")
+        self.assertEqual([(e.partner_name, e.ar_status, e.settled_on) for e in copied],
+                         [("받음", "scheduled", None), ("장기", "long_overdue", None), ("통신", "", None)])
+        self.assertTrue(copied[2].auto_transfer)
+        self.assertEqual(copied[1].due_on, date(2026, 12, 31))  # 예정일은 그대로
+        self.assertNotIn(hidden.partner_name, [e.partner_name for e in copied])
+        # 이번 달에 이미 행이 있으면 다시 불러올 수 없음
+        self.assertEqual(self.client.post("/api/management/ledger/copy/", body, format="json").status_code, 409)
+        log = AuditLog.objects.get(screen="ledger-copy")
+        self.assertEqual(self.client.get("/api/management/history/?screen=ledger-copy").data["rows"][0]["lines"],
+                         ["2026-09 → 2026-10 · 3행 저장 · 당월 수금 1행 포함"])
+        self.assertEqual(log.meta["saved_rows"], 3)
+
+    def test_other_team_blocked(self, _):
+        self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
+        self.assertEqual(self.client.get("/api/management/ledger/").status_code, 403)
+        self.assertEqual(self.add().status_code, 403)

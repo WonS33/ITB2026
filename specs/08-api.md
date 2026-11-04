@@ -43,6 +43,15 @@
 | GET | `/api/management/monthly/{year}/{month}/ledger/` | [경영지원 관리에서 불러오기]용 그 달 장부 행 (외상매출금·숨긴 행 제외, 읽기만). 입력할 수 없는 달은 403 | 전체 |
 | GET | `/api/management/monthly/export/?year=&period=month\|quarter\|year&month=&quarter=` | 월간 입력 엑셀 (.xlsx). 분기·연간은 합계 시트(확정된 달만) + 월 시트. 이번 달까지만, 미래 기간은 400 | 전체 |
 | GET | `/api/management/history/?from=&to=&actor=&screen=&action=&q=&page=` | 변경 이력 (최근부터 50건씩, 기본 최근 30일) | 전체 |
+| GET | `/api/management/history/row/?type=Receivable\|LedgerEntry&id=` | 한 건의 변경 기록 | 전체 |
+| GET / POST | `/api/management/ledger/?year=&month=` | 경영지원 관리: 기준년월의 모든 행(숨긴 행 포함)·행 추가(`{year, month, fields}`). 이번 달 이후는 400 | 전체 |
+| PUT | `/api/management/ledger/{id}/` | 행 수정 (`fields`, `expected_updated_at`). 구분 변경 불가, 다르면 409 | 전체 |
+| POST | `/api/management/ledger/{id}/hide/`, `restore/` | 숨김·복구 (`expected_updated_at`) | 전체 |
+| GET / POST | `/api/management/ledger/copy/` | 지난달 내용 불러오기: GET 미리보기(`existing`·`source_count`·구분별 행·금액·당월 수금), POST 저장(`include_collected`, `expected_source_count`). 이번 달에 행이 있거나 지난달이 바뀌었으면 409 | 전체 |
+| GET / POST | `/api/management/receivables/` | 미수금 건별 기록 목록(숨긴 건 포함, `age_days`·`over90`·`overdue`, `basis` = 장부 외상매출금과 같은 기준일 비교)·등록 | 전체 |
+| PUT | `/api/management/receivables/{id}/` | 수정 (수금 완료 건은 `collected_on`도). `expected_updated_at` 필수, 다르면 409 | 전체 |
+| POST | `/api/management/receivables/{id}/collect\|uncollect\|hide\|restore/` | 수금 처리(`collected_on`)·수금 취소·숨김·복구. `expected_updated_at` 필수 | 전체 |
+| GET | `/api/management/receivables/export/?(기간)` | 미수금 엑셀 (기준일 = min(기간 말일, 오늘), 경과일 구간·거래처별·상세) | 전체 |
 | GET | `/api/management/dashboard/?(기간)` | 메인 화면 집계: `confirmation`(확정·미확정·마감 전 달), `revenue`·`costs`(구성 포함)·`profit`(간이), `changes`(직전 기간·전년 동기 증감), `targets`(기간·분기·연간 진도), `trend`(최근 12개월), `receivables`(외상매출금 기준), `teams`(생산량·산업 분야·제품·서비스) | 전체 |
 | GET | `/api/management/targets/{year}/export/` | 목표 대비 실적 엑셀 (확정된 달만, 변경 기록에 남김) | 전체 |
 | POST | `/api/management/ai-comment/` | AI 분석 코멘트 생성 (선택, 기업 허용 확인 후) | 전체 |
@@ -136,3 +145,5 @@
 - 2026-11-04: 월간 입력 PUT·확정 취소에 `expected_updated_at` 필수 — 화면을 불러온 뒤 다른 저장이 있었으면 409(동시 수정). 장부 불러오기·엑셀·변경 이력 API 추가
 - 2026-11-04: 목표 설정(분기 목표·직원 수)·그 외 지출 항목 관리 API 구현. 둘 다 동시 수정이면 409, 저장하면 변경 기록
 - 2026-11-04: 메인 대시보드 API·목표 대비 실적 엑셀 구현
+- 2026-11-04: 미수금 건별 기록 API(등록·수정·수금·숨김·복구·엑셀)와 건별 변경 기록 API 추가
+- 2026-11-04: 경영지원 관리 장부 API(행 추가·수정·숨김·복구, 지난달 내용 불러오기) 추가

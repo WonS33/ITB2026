@@ -121,7 +121,7 @@ onMounted(async () => {
               </tbody>
             </table>
             <p v-else class="small text-muted">채울 칸이 없습니다.</p>
-            <p v-for="n in notes" :key="n" class="small text-warning-emphasis mb-1">{{ n }}</p>
+            <p v-for="n in notes" :key="n" class="small text-warn mb-1">{{ n }}</p>
           </template>
         </div>
         <div class="modal-footer">

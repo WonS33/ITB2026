@@ -20,6 +20,10 @@ ACTION_LABELS = {
     "CONFIRM": "확정",
     "UPDATE_CONFIRMED": "확정 후 수정",
     "UNCONFIRM": "확정 취소",
+    "COLLECT": "수금 처리",
+    "UNCOLLECT": "수금 취소",
+    "HIDE": "숨김",
+    "RESTORE": "복구",
     "EXPORT": "엑셀 다운로드",
 }
 # 기록하는 화면 → 화면 표기
@@ -29,6 +33,10 @@ SCREEN_LABELS = {
     "targets": "목표 설정",
     "expense-categories": "지출 항목",
     "targets-export": "목표 대비 실적 엑셀 다운로드",
+    "receivables": "미수금 건별 기록",
+    "receivables-export": "미수금 엑셀 다운로드",
+    "ledger": "경영지원 관리",
+    "ledger-copy": "경영지원 관리 지난달 불러오기",
 }
 
 _FORBIDDEN = re.compile(r"pass(word|wd)?|hash|token|secret|session|salt|credential|apikey|api_key", re.I)
@@ -172,6 +180,74 @@ CATEGORY_FIELDS = [
 ]
 
 
+# ---------- 미수금 건별 기록 ----------
+
+
+def _date(value):
+    return None if value is None else value.isoformat()
+
+
+RECEIVABLE_FIELDS = [
+    ("customer_name", "거래처", text),
+    ("occurred_on", "발생일", _date),
+    ("amount", "금액", won),
+    ("due_on", "수금 예정일", _date),
+    ("note", "비고", text),
+    ("is_collected", "상태", lambda v: "수금 완료" if v else "미수"),
+    ("collected_on", "수금일", _date),
+]
+
+
+def receivable_snapshot(r):
+    return {f: getattr(r, f) for f, _, _ in RECEIVABLE_FIELDS}
+
+
+def receivable_label(r):
+    return f"{r.customer_name} · {r.occurred_on.isoformat()} 발생"
+
+
+# ---------- 경영지원 관리 장부 ----------
+
+
+def ledger_fields(kind):
+    """구분마다 화면에 있는 칸만 (거래처코드·상태는 외상매출금, 매입유형은 외상매입금, 비용유형·자동이체는 업체)"""
+    from .models import LedgerEntry as L
+
+    word = "수금" if kind == L.Kind.AR else "지급"
+    fields = []
+    if kind == L.Kind.AR:
+        fields += [("partner_code", "코드", text), ("ar_status", "상태", lambda v: dict(L.ArStatus.choices).get(v) if v else None)]
+    if kind == L.Kind.AP:
+        fields += [("purchase_type", "매입유형", lambda v: dict(L.PurchaseType.choices).get(v) if v else None)]
+    if kind == L.Kind.ACCRUED_VENDOR:
+        fields += [
+            ("expense_type", "비용유형", lambda v: dict(L.ExpenseType.choices).get(v) if v else None),
+            ("auto_transfer", "자동이체", lambda v: "자동이체" if v else None),
+        ]
+    return fields + [
+        ("partner_name", "거래처명", text),
+        ("amount", "잔액", won),
+        ("note", "적요", text),
+        ("due_on", f"{word} 예정일", _date),
+        ("settled_on", f"{word} 완료일", _date),
+    ]
+
+
+LEDGER_SNAPSHOT_FIELDS = (
+    "ar_status", "purchase_type", "expense_type", "auto_transfer", "partner_code",
+    "partner_name", "amount", "note", "due_on", "settled_on",
+)
+
+
+def ledger_snapshot(e):
+    return {f: getattr(e, f) for f in LEDGER_SNAPSHOT_FIELDS}
+
+
+def ledger_label(e):
+    # 예: "2026-10 외상매출금 · 가나상사"
+    return f"{e.year}-{e.month:02d} {e.get_kind_display()} · {e.partner_name}"
+
+
 # ---------- 화면 표시 ----------
 
 
@@ -183,6 +259,13 @@ def _actor_text(log):
 
 def _meta_line(log):
     m = log.meta or {}
+    if log.screen == "ledger-copy":
+        parts = [
+            f"{m['from']} → {m['month']}" if m.get("from") else None,
+            f"{m['saved_rows']}행 저장" if isinstance(m.get("saved_rows"), int) else None,
+            f"당월 수금 {m['collected_rows']}행 {m.get('include_collected', '')}".strip() if m.get("collected_rows") else None,
+        ]
+        return " · ".join(p for p in parts if p) or None
     if log.action == "EXPORT":
         parts = [
             m.get("period"),

@@ -339,3 +339,101 @@ def build_targets_workbook(year, summary, today=None):
     buffer = BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
+
+
+# ---------- 미수금 건별 기록 엑셀 (조원 저장소 receivables/export/receivables-layout.ts 를 옮김) ----------
+# 시트1 "미수금 통계": 경과일 그룹(90일 초과 → 61~90일 → 31~60일 → 0~30일, 90일 초과 그룹은 빨간 글씨) + 거래처별 미수금
+#   (빈 그룹도 빈 행 1개 + 총액 0), H·I에 90일 초과 합계·수금 예정일 지남
+# 시트2 "미수금 상세": 건별 목록 (경과일 큰 순, 첫 행 고정·자동 필터)
+
+
+def _md(d):
+    return f"{d.month:02d}/{d.day:02d}"
+
+
+def build_receivables_workbook(r):
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "미수금 통계"
+    for col, width in ((C, 26), (D, 16), (E, 34), (F, 16), (H, 22), (9, 16)):
+        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = width
+
+    def header(row):
+        for col, text in ((C, "거래처명"), (D, "미수 금액"), (E, "적요"), (F, "총액")):
+            cell = ws.cell(row=row, column=col, value=text)
+            cell.font, cell.fill, cell.border = Font(bold=True), HEADER_FILL, BOX
+            cell.alignment = Alignment(horizontal="center")
+
+    def group(row, items, memo, warn=False):
+        items = items or [(None, None, None)]  # 빈 그룹도 빈 행 1개
+        first = row
+        red = Font(color=RED) if warn else Font()
+        for name, amount, note in items:
+            for col, value in ((C, name), (D, amount), (E, note)):
+                cell = ws.cell(row=row, column=col, value=value)
+                cell.border, cell.font = BOX, red
+                if col == D:
+                    cell.number_format = MONEY
+            ws.cell(row=row, column=F).border = BOX
+            row += 1
+        total = ws.cell(row=first, column=F, value=f"=SUM(D{first}:D{row - 1})")
+        total.number_format, total.font = MONEY, Font(bold=True, color=RED if warn else None)
+        total.alignment = Alignment(horizontal="center", vertical="center")
+        if row - 1 > first:
+            ws.merge_cells(start_row=first, start_column=F, end_row=row - 1, end_column=F)
+        ws.cell(row=first, column=H, value=f"← {memo}").font = Font(color=RED if warn and memo else None)
+        return row, first
+
+    as_of = r["as_of"]
+    ws.cell(row=1, column=C, value=f"미수금 통계 ({as_of.month}/{as_of.day} 기준)").font = Font(bold=True)
+    header(2)
+    row, over90_row = 3, 3
+    for bucket in r["aging"]:
+        lst = [i for i in r["items"] if i["bucket"] == bucket["bucket"]]
+        items = [
+            (
+                i["customer_name"],
+                i["amount"],
+                f"{_md(i['occurred_on'])} 발생·{i['age_days']}일"
+                + (f"·예정 {_md(i['due_on'])}{' 지남' if i['overdue'] else ''}" if i["due_on"] else ""),
+            )
+            for i in lst
+        ]
+        row, first = group(row, items, f"{bucket['label']} {len(lst)}건", warn=bucket["bucket"] == "90+" and bool(lst))
+        if bucket["bucket"] == "90+":
+            over90_row = first
+
+    row += 1
+    ws.cell(row=row, column=C, value="거래처별 미수금").font = Font(bold=True)
+    header(row + 1)
+    items = [(c["customer_name"], c["amount"], f"{c['count']}건 · 최장 {c['max_age']}일") for c in r["by_customer"]]
+    end, first = group(row + 2, items, f"미수금 총액 {r['count']}건")
+    over90 = next(a for a in r["aging"] if a["bucket"] == "90+")
+    for k, (label, value, warn) in enumerate((
+        ("90일 초과", f"=F{over90_row}", over90["amount"] > 0),
+        ("수금 예정일 지남", r["overdue"]["amount"], False),  # 건별 예정일이라 시트 안 다른 칸으로 다시 계산할 수 없어 값만
+    )):
+        ws.cell(row=first + 1 + k, column=H, value=label).font = Font(color=RED if warn else None)
+        cell = ws.cell(row=first + 1 + k, column=9, value=value)
+        cell.number_format, cell.font = MONEY, Font(color=RED if warn else None)
+
+    # ── 미수금 상세 (목록형) ──
+    detail = wb.create_sheet("미수금 상세")
+    columns = [("거래처명", 26), ("발생일", 12), ("예정일", 12), ("경과일", 8), ("구간", 10), ("금액", 15), ("비고", 30)]
+    labels = {b["bucket"]: b["label"] for b in r["aging"]}
+    detail.append([c for c, _ in columns])
+    for k, (_, width) in enumerate(columns, start=1):
+        detail.cell(row=1, column=k).font = Font(bold=True)
+        detail.column_dimensions[detail.cell(row=1, column=k).column_letter].width = width
+    for i in sorted(r["items"], key=lambda i: (-i["age_days"], -i["amount"])):
+        detail.append([
+            i["customer_name"], i["occurred_on"].isoformat(), i["due_on"].isoformat() if i["due_on"] else None,
+            i["age_days"], labels[i["bucket"]], i["amount"], i["note"] or None,
+        ])
+        detail.cell(row=detail.max_row, column=6).number_format = MONEY
+    detail.freeze_panes = "A2"
+    detail.auto_filter.ref = f"A1:G{max(detail.max_row, 1)}"
+
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()

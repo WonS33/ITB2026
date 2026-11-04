@@ -18,6 +18,8 @@ const router = createRouter({
         { path: 'entry', component: () => import('@/views/management/EntryView.vue'), meta: { edit: true } },
         { path: 'history', component: () => import('@/views/management/HistoryView.vue') },
         { path: 'settings', component: () => import('@/views/management/SettingsView.vue'), meta: { edit: true } },
+        { path: 'ledger', component: () => import('@/views/management/LedgerView.vue'), meta: { edit: true } },
+        { path: 'receivables', component: () => import('@/views/management/ReceivablesView.vue'), meta: { edit: true } },
       ],
     },
     {

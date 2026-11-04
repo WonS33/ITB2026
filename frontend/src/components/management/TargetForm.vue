@@ -158,7 +158,7 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
           <button type="button" class="btn btn-primary" :disabled="saving || !dirty || !(form.annual > 0)" @click="onSave">
             {{ saving ? '저장 중…' : '저장' }}
           </button>
-          <small v-if="dirty" class="text-warning-emphasis">저장하지 않은 변경 있음</small>
+          <small v-if="dirty" class="text-warn">저장하지 않은 변경 있음</small>
           <small v-if="data.updated_by" class="text-muted ms-auto">
             마지막 저장: {{ data.updated_by }} · {{ new Date(data.updated_at).toLocaleString('ko-KR') }}
           </small>

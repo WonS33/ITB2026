@@ -1,10 +1,10 @@
 import random
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 
-from management.models import AnnualSalesTarget, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
+from management.models import AnnualSalesTarget, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
 
 # 개발·시연용 가상 데이터 (조원 저장소 prisma/seed.ts 의 값 범위를 따름, 실제 기업 숫자 아님)
 CATEGORIES = [
@@ -32,7 +32,7 @@ def won(rng, low, high):
 
 
 class Command(BaseCommand):
-    help = "가상 경영지원 데이터: 최근 3년 연간 목표 + 그 외 지출 항목 5개 + 지난달까지 24개월 월별 실적 (지난달만 임시저장) + 최근 3개월 경영지원 관리 장부. 여러 번 실행해도 같은 값으로 덮어씀."
+    help = "가상 경영지원 데이터: 최근 3년 연간 목표 + 그 외 지출 항목 5개 + 지난달까지 24개월 월별 실적 (지난달만 임시저장) + 최근 3개월 경영지원 관리 장부 + 미수금 건별 기록 11건. 여러 번 실행해도 같은 값으로 덮어씀."
 
     def handle(self, *args, **options):
         rng = random.Random(20261016)  # 실행할 때마다 같은 가상 값
@@ -85,13 +85,41 @@ class Command(BaseCommand):
                 )
 
         ledger_rows = self.seed_ledger(rng, last)
+        receivable_rows = self.seed_receivables(today)
 
         first = last - (MONTHS - 1)
         self.stdout.write(
             f"그 외 지출 항목 {len(categories)}개, 월별 실적 {first // 12}-{first % 12 + 1:02d} ~ "
             f"{last // 12}-{last % 12 + 1:02d} ({MONTHS}개월, 마지막 달은 임시저장), "
-            f"경영지원 관리 장부 최근 {LEDGER_MONTHS}개월 {ledger_rows}행"
+            f"경영지원 관리 장부 최근 {LEDGER_MONTHS}개월 {ledger_rows}행, 미수금 건별 기록 {receivable_rows}건"
         )
+
+    def seed_receivables(self, today):
+        """미수금 건별 기록: 오늘 기준 며칠 전 발생으로 만들어 경과일 구간(0~30·31~60·61~90·90일 초과)이 골고루 나오게"""
+        Receivable.objects.filter(customer_name__endswith="(가상)").delete()
+        day = lambda n: today - timedelta(days=n)  # noqa: E731
+        rows = [
+            # 거래처, 발생(며칠 전), 금액, 수금 예정(며칠 전, 음수 = 앞으로), 수금(며칠 전, None = 미수), 비고
+            ("가나상하수도(가상)", 200, 48_000_000, 150, 140, "전동밸브 10대"),
+            ("다라발전(가상)", 160, 125_500_000, 120, None, "분할 납품 1차 — 장기 미수"),
+            ("마바가스(가상)", 120, 32_400_000, 90, 85, ""),
+            ("사아오일(가상)", 100, 76_000_000, 60, None, "담당자 휴가 — 다음 달 입금 약속"),
+            ("자차석유(가상)", 75, 19_800_000, 45, None, ""),
+            ("카타플랜트(가상)", 70, 210_000_000, 30, 25, "선금 포함"),
+            ("가나상하수도(가상)", 45, 55_300_000, -15, None, ""),
+            ("파하설비(가상)", 40, 12_600_000, 10, None, "예정일 지남 — 확인 필요"),
+            ("다라발전(가상)", 20, 88_000_000, -40, None, ""),
+            ("마바가스(가상)", 12, 9_900_000, None, None, "예정일 미정"),
+            ("사아오일(가상)", 5, 41_000_000, -55, None, ""),
+        ]
+        for name, occurred, amount, due, collected, note in rows:
+            Receivable.objects.create(
+                customer_name=name, occurred_on=day(occurred), amount=amount,
+                due_on=None if due is None else day(due),
+                is_collected=collected is not None, collected_on=None if collected is None else day(collected),
+                note=note,
+            )
+        return len(rows)
 
     def seed_ledger(self, rng, last):
         """경영지원 관리 장부: 최근 몇 달, 블록 4개 (가상 거래처 — 이름 끝 "(가상)" 으로 구분해 다시 만듦)"""

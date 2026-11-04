@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense
+from .models import AnnualSalesTarget, AuditLog, ExpenseCategory, LedgerEntry, MonthlyFinance, OtherExpense, Receivable
 
 
 class OtherExpenseInline(admin.TabularInline):
@@ -47,3 +47,10 @@ class AuditLogAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+@admin.register(Receivable)
+class ReceivableAdmin(admin.ModelAdmin):
+    list_display = ("customer_name", "occurred_on", "amount", "is_collected", "collected_on", "deleted_at")
+    list_filter = ("is_collected",)
+    search_fields = ("customer_name",)

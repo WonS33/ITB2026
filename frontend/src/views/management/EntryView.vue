@@ -330,10 +330,10 @@ onBeforeUnmount(() => window.removeEventListener('beforeunload', beforeUnload))
                   <tr><th class="fw-normal">지출 합계</th><td class="text-end">{{ won(expenseTotal) }}</td></tr>
                 </tbody>
               </table>
-              <p v-if="pending.intent !== 'unconfirm' && zeroFields.length" class="text-warning-emphasis small mb-1">
+              <p v-if="pending.intent !== 'unconfirm' && zeroFields.length" class="text-warn small mb-1">
                 0원인 칸: {{ zeroFields.join(', ') }}
               </p>
-              <p v-if="pending.intent !== 'unconfirm' && anomalyCount" class="text-warning-emphasis small mb-0">
+              <p v-if="pending.intent !== 'unconfirm' && anomalyCount" class="text-warn small mb-0">
                 전월과 자릿수가 크게 다른 칸이 {{ anomalyCount }}개 있습니다.
               </p>
             </div>

@@ -129,7 +129,7 @@ class LedgerEntry(TimeStampedModel):
     """경영지원 관리 장부 (채권·채무): 기준년월별 거래처 잔액 — 고객사 「경영지원_관리」 엑셀의 블록 4개
 
     월간 입력의 [경영지원 관리에서 불러오기]가 외상매입금·미지급비용(직원·업체)을 읽는다.
-    (장부를 고치는 화면은 아직 옮기지 않음 — 지금은 가상 데이터·Django 관리 화면으로만 넣는다)
+    외상매출금의 장기 미수금 + 당월 수금예정이 대시보드 미수금이 된다. 화면: /management/ledger
     """
 
     class Kind(models.TextChoices):
@@ -167,6 +167,12 @@ class LedgerEntry(TimeStampedModel):
     settled_on = models.DateField("완료일", null=True, blank=True)
     # 숨김(삭제 대신) — 값이 있으면 불러오기·집계에서 뺀다
     deleted_at = models.DateTimeField("숨긴 일시", null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="숨긴 사람", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="마지막 수정자", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
 
     class Meta:
         verbose_name = "경영지원 관리 장부"
@@ -213,3 +219,35 @@ class AuditLog(models.Model):
 
     def delete(self, *args, **kwargs):
         raise ValueError("변경 기록은 지울 수 없습니다.")
+
+
+class Receivable(TimeStampedModel):
+    """미수금 건별 기록 (거래 건마다 한 줄) — 건별 메모·수금 기록용
+
+    대시보드 미수금은 경영지원 관리 장부의 외상매출금 기준이고, 이 표는 건별 참고 자료다 (조원 저장소 2026-10-26 결정)
+    """
+
+    customer_name = models.CharField("거래처", max_length=50)
+    occurred_on = models.DateField("발생일")
+    amount = models.PositiveBigIntegerField("금액")
+    is_collected = models.BooleanField("수금 완료", default=False)
+    collected_on = models.DateField("수금일", null=True, blank=True)
+    due_on = models.DateField("수금 예정일", null=True, blank=True)
+    note = models.CharField("비고", max_length=200, blank=True)
+    # 숨김(삭제 대신) — 값이 있으면 목록·통계에서 빠지고 복구할 수 있다
+    deleted_at = models.DateTimeField("숨긴 일시", null=True, blank=True)
+    deleted_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="숨긴 사람", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, verbose_name="마지막 수정자", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    class Meta:
+        verbose_name = "미수금 건별 기록"
+        verbose_name_plural = verbose_name
+        ordering = ["-occurred_on", "-created_at"]
+        indexes = [models.Index(fields=["is_collected", "occurred_on"]), models.Index(fields=["deleted_at"])]
+
+    def __str__(self):
+        return f"{self.customer_name} · {self.occurred_on} 발생"

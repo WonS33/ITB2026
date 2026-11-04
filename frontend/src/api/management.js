@@ -30,3 +30,20 @@ export const saveCategories = (body) => apiFetch('/management/expense-categories
 // 메인 대시보드 (기간 보기: 당월·분기·연간) + 목표 대비 실적 엑셀
 export const getDashboard = (period) => apiFetch(`/management/dashboard/?${periodParams(period)}`)
 export const exportTargets = (year) => downloadFile(`/management/targets/${year}/export/`, `목표실적_${year}.xlsx`)
+// 미수금 건별 기록 — action: collect / uncollect / hide / restore (모두 expected_updated_at 필요)
+export const getReceivables = () => apiFetch('/management/receivables/')
+export const createReceivable = (body) => apiFetch('/management/receivables/', { method: 'POST', body })
+export const updateReceivable = (id, body) => apiFetch(`/management/receivables/${id}/`, { method: 'PUT', body })
+export const receivableAction = (id, action, body) => apiFetch(`/management/receivables/${id}/${action}/`, { method: 'POST', body })
+export const exportReceivables = (period) => downloadFile(`/management/receivables/export/?${periodParams(period)}`, '미수금.xlsx')
+// 한 건의 변경 기록 (type: Receivable)
+export const getRowHistory = (type, id) => apiFetch(`/management/history/row/?type=${type}&id=${id}`)
+// 경영지원 관리 장부 — 기준년월별 거래처 잔액 (행 추가·수정·숨김·복구, 지난달 내용 불러오기)
+export const getLedger = (year, month) => apiFetch(`/management/ledger/?year=${year}&month=${month}`)
+export const createLedgerEntry = (year, month, fields) => apiFetch('/management/ledger/', { method: 'POST', body: { year, month, fields } })
+export const updateLedgerEntry = (id, fields, expectedUpdatedAt) =>
+  apiFetch(`/management/ledger/${id}/`, { method: 'PUT', body: { fields, expected_updated_at: expectedUpdatedAt } })
+export const ledgerAction = (id, action, expectedUpdatedAt) =>
+  apiFetch(`/management/ledger/${id}/${action}/`, { method: 'POST', body: { expected_updated_at: expectedUpdatedAt } })
+export const previewLedgerCopy = (year, month) => apiFetch(`/management/ledger/copy/?year=${year}&month=${month}`)
+export const copyLedger = (body) => apiFetch('/management/ledger/copy/', { method: 'POST', body })

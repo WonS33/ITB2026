@@ -166,7 +166,7 @@ defineExpose({ dirty })
           {{ saving ? '저장 중…' : '변경 저장' }}
         </button>
         <small v-if="hasErrors" class="text-danger">항목 이름을 확인하세요 (빈 이름·중복)</small>
-        <small v-else-if="dirty" class="text-warning-emphasis">저장하지 않은 변경 있음</small>
+        <small v-else-if="dirty" class="text-warn">저장하지 않은 변경 있음</small>
       </div>
     </div>
 
