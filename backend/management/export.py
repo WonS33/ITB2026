@@ -437,3 +437,148 @@ def build_receivables_workbook(r):
     buffer = BytesIO()
     wb.save(buffer)
     return buffer.getvalue()
+
+
+# ---------- 경영지원 관리 장부 엑셀 (조원 저장소 ledger/export/*.ts 를 옮김) ----------
+# 고객사 원본 양식과 같은 순서·열 위치로, 행 수만 실제 데이터 수만큼 → 내려받은 파일을 [엑셀 가져오기]로 다시 올려도 같은 값으로 읽힌다
+# - 블록: 제목(C:F 병합) → 머리글 → 데이터 → 빈 행. 외상매출금 → 외상매입금 → 미지급비용-직원 → 미지급비용-업체
+# - 그룹(외상매출금 상태별·다른 블록 전체)마다 행 수 = max(데이터 수, 1). 빈 그룹도 빈 행 1개 + 총액 0 + H열 메모
+# - 총액: F열 그룹 병합 + =SUM. 장기 미수금 행은 빨간 글씨
+# - 업체: 자동이체 행을 위에(연두, E:F 병합), 총액은 자동이체 제외 SUM (원본과 같음), H·I열에 자동이체 합계 / 전체 합계
+# - 당월: 그 달 시트 1장 / 분기·연간: 데이터가 있는 달만 월별 시트, 하나도 없으면 빈 양식 1장
+
+GREEN = PatternFill("solid", fgColor="E2EFDA")  # 연두 (가져오기에서 자동이체로 읽는 색)
+LEDGER_RED = "FF0000"  # 원본 양식의 장기 미수금 빨강 (가져오기가 이 색을 빨간 글씨로 읽는다)
+AR_ORDER = [
+    ("long_overdue", "장기 미수금 업체"),
+    ("collected", "당월 수금된 업체"),
+    ("scheduled", "당월 수금예정인 업체"),
+]
+KIND_ORDER = [("ap", "외상매입금", "당월 매입 지출"), ("accrued_staff", "미지급비용-직원", "당월 경비 지출")]
+
+
+def ledger_period_name(period):
+    if period.kind == "month":
+        return _month_name(period.year, period.months[0])
+    return _total_sheet_name(period)
+
+
+def ledger_file_name(period):
+    return f"경영지원_관리_{ledger_period_name(period)}.xlsx"
+
+
+def plan_ledger_sheets(period, today=None):
+    """[(시트 이름, 행 목록)] — 숨긴 행 제외, 입력 순서대로"""
+    from .models import LedgerEntry
+
+    months = export_months(period, today)
+    if not months:
+        return []
+    rows = list(LedgerEntry.objects.filter(year=period.year, month__in=months, deleted_at__isnull=True).order_by("created_at", "id"))
+    sheets = [(_month_name(period.year, m), [r for r in rows if r.month == m]) for m in months]
+    if period.kind == "month":
+        return sheets
+    with_data = [s for s in sheets if s[1]]
+    return with_data or [(ledger_period_name(period), [])]
+
+
+def _draw_ledger(ws, rows):
+    for col, width in ((1, 13), (C, 26), (D, 15), (E, 26), (F, 15), (H, 24), (9, 15)):
+        ws.column_dimensions[ws.cell(row=1, column=col).column_letter].width = width
+    ws.column_dimensions["B"].width = 2
+    state = {"row": 1}
+
+    def title(text):
+        r = state["row"]
+        ws.cell(row=r, column=C, value=text).font = Font(bold=True)
+        ws.merge_cells(start_row=r, start_column=C, end_row=r, end_column=F)
+        state["row"] += 1
+
+    def header(code):
+        r = state["row"]
+        cols = ([(1, "코드")] if code else []) + [(C, "거래처명"), (D, "잔액"), (E, "적요"), (F, "총액")]
+        for col, text in cols:
+            cell = ws.cell(row=r, column=col, value=text)
+            cell.font, cell.fill, cell.border = Font(bold=True), HEADER_FILL, BOX
+            cell.alignment = Alignment(horizontal="center")
+        state["row"] += 1
+
+    def group(items, memo, code=False, red=False):
+        """items: 장부 행 목록 → F열 합계(병합) + H열 메모. (첫 행, 마지막 행)을 돌려줌"""
+        first = state["row"]
+        font = Font(color=LEDGER_RED) if red else Font()
+        for e in items or [None]:  # 빈 그룹도 빈 행 1개
+            r = state["row"]
+            if code:
+                c = ws.cell(row=r, column=1, value=(e.partner_code or None) if e else None)
+                c.number_format = "@"  # 앞자리 0 유지
+            for col, value in ((C, e.partner_name if e else None), (D, e.amount if e else None), (E, (e.note or None) if e else None)):
+                cell = ws.cell(row=r, column=col, value=value)
+                cell.border, cell.font = BOX, font
+                if col == D:
+                    cell.number_format = MONEY
+                if col == E:
+                    cell.number_format = "@"  # 적요가 날짜로 바뀌지 않게 글자로
+            ws.cell(row=r, column=F).border = BOX
+            state["row"] += 1
+        last = state["row"] - 1
+        total = ws.cell(row=first, column=F, value=f"=SUM(D{first}:D{last})")
+        total.number_format, total.font = MONEY, Font(bold=True, color=LEDGER_RED if red else None)
+        total.alignment = Alignment(horizontal="center", vertical="center")
+        if last > first:
+            ws.merge_cells(start_row=first, start_column=F, end_row=last, end_column=F)
+        ws.cell(row=first, column=H, value=f"← {memo}")
+        return first, last
+
+    def of(kind):
+        return [e for e in rows if e.kind == kind]
+
+    # 외상매출금: 상태별 그룹
+    title("외상매출금")
+    header(code=True)
+    for status, memo in AR_ORDER:
+        group([e for e in of("ar") if e.ar_status == status], memo, code=True, red=status == "long_overdue")
+    state["row"] += 1
+    for kind, label, memo in KIND_ORDER:
+        title(label)
+        header(code=False)
+        group(of(kind), memo)
+        state["row"] += 1
+
+    # 미지급비용-업체: 자동이체 행(연두, E:F 병합) → 일반 행(총액 = 자동이체 제외)
+    title("미지급비용-업체")
+    header(code=False)
+    vendor = of("accrued_vendor")
+    auto = [e for e in vendor if e.auto_transfer]
+    auto_first = state["row"]
+    for e in auto or [None]:
+        r = state["row"]
+        for col, value in ((C, e.partner_name if e else None), (D, e.amount if e else None), (E, (e.note or "자동이체") if e else "자동이체")):
+            cell = ws.cell(row=r, column=col, value=value)
+            cell.fill, cell.border = GREEN, BOX
+            if col == D:
+                cell.number_format = MONEY
+            if col == E:
+                cell.number_format = "@"
+        ws.merge_cells(start_row=r, start_column=E, end_row=r, end_column=F)
+        state["row"] += 1
+    auto_last = state["row"] - 1
+    first, last = group([e for e in vendor if not e.auto_transfer], "당월 그 외 지출")
+    extras = (("자동이체 합계", f"=SUM(D{auto_first}:D{auto_last})"), ("전체 합계", f"=SUM(D{auto_first}:D{last})"))
+    for k, (label, expr) in enumerate(extras):
+        ws.cell(row=first + 1 + k, column=H, value=label)
+        ws.cell(row=first + 1 + k, column=9, value=expr).number_format = MONEY
+
+
+def build_ledger_workbook(sheets):
+    wb = Workbook()
+    wb.remove(wb.active)
+    for name, rows in sheets:
+        ws = wb.create_sheet(name)
+        ws.page_setup.paperSize = ws.PAPERSIZE_A4
+        ws.sheet_properties.pageSetUpPr.fitToPage = True
+        ws.page_setup.fitToHeight = 0
+        _draw_ledger(ws, rows)
+    buffer = BytesIO()
+    wb.save(buffer)
+    return buffer.getvalue()

@@ -39,6 +39,7 @@ SCREEN_LABELS = {
     "ledger": "경영지원 관리",
     "ledger-copy": "경영지원 관리 지난달 불러오기",
     "ledger-import": "경영지원 관리 엑셀 이관",
+    "ledger-export": "경영지원 관리 엑셀 다운로드",
 }
 
 _FORBIDDEN = re.compile(r"pass(word|wd)?|hash|token|secret|session|salt|credential|apikey|api_key", re.I)

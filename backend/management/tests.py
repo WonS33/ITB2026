@@ -731,3 +731,112 @@ class LedgerImportTests(APITestCase):
         res = self.client.post("/api/management/ledger/import/preview/", {"year": 2026, "month": 10, "file": buf}, format="multipart")
         self.assertEqual(res.status_code, 400)
         self.assertIn("양식이 아닙니다", res.data["detail"])
+
+
+@patch("management.export.timezone.localdate", return_value=TODAY)
+@patch("management.ledger_views.timezone.localdate", return_value=TODAY)
+@patch("management.ledger_import_views.timezone.localdate", return_value=TODAY)
+class LedgerExportTests(APITestCase):
+    """경영지원 관리 엑셀 내려받기 — 내려받은 파일을 다시 올려도 같은 값으로 읽혀야 한다 (왕복)"""
+
+    def setUp(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+        add = lambda **kw: LedgerEntry.objects.create(year=2026, month=10, **kw)  # noqa: E731
+        add(kind="ar", ar_status="long_overdue", partner_code="0000000087", partner_name="가나", amount=100, note="오래됨")
+        add(kind="ar", ar_status="collected", partner_code="0000000102", partner_name="다라", amount=200, note="", settled_on=date(2026, 10, 15))
+        add(kind="ar", ar_status="scheduled", partner_name="마바", amount=300, note="10/20")
+        add(kind="ap", purchase_type="goods", partner_name="사아", amount=400)
+        add(kind="accrued_vendor", expense_type="other", auto_transfer=True, partner_name="통신", amount=50, note="인터넷")
+        add(kind="accrued_vendor", expense_type="advertising", partner_name="광고", amount=60)
+        add(kind="ap", purchase_type="goods", partner_name="숨김", amount=1, deleted_at="2026-10-30T00:00:00Z")
+
+    def test_round_trip(self, *_):
+        res = self.client.get("/api/management/ledger/export/?year=2026&period=month&month=10")
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("2026-10.xlsx", res["Content-Disposition"])
+        buf = BytesIO(res.content)
+        buf.name = "경영지원_관리_2026-10.xlsx"
+        preview = self.client.post("/api/management/ledger/import/preview/", {"year": 2026, "month": 10, "file": buf}, format="multipart")
+        self.assertEqual(preview.status_code, 200)
+        p = preview.data
+        self.assertEqual(p["fatal"], [])
+        rows = {r["partner_name"]: r for b in p["blocks"] for r in b["rows"]}
+        self.assertNotIn("숨김", rows)  # 숨긴 행은 내려받지 않음
+        self.assertEqual((rows["가나"]["ar_status"], rows["가나"]["ar_status_source"], rows["가나"]["partner_code"]), ("long_overdue", "red", "0000000087"))
+        self.assertEqual((rows["다라"]["ar_status"], rows["다라"]["ar_status_source"]), ("collected", "memo"))
+        self.assertEqual((rows["마바"]["ar_status"], rows["마바"]["note"]), ("scheduled", "10/20"))  # 적요가 날짜로 바뀌지 않음
+        self.assertTrue(rows["통신"]["auto_transfer"])
+        self.assertFalse(rows["광고"]["auto_transfer"])
+        self.assertEqual(sum(len(b["rows"]) for b in p["blocks"]), 6)
+        log = AuditLog.objects.get(screen="ledger-export")
+        self.assertEqual((log.action, log.meta["rows"]), ("EXPORT", 6))
+
+    def test_quarter_sheets_and_future(self, *_):
+        res = self.client.get("/api/management/ledger/export/?year=2026&period=quarter&quarter=4")
+        wb = load_workbook(BytesIO(res.content))
+        self.assertEqual(wb.sheetnames, ["2026-10"])  # 데이터가 있는 달만
+        ws = wb["2026-10"]
+        self.assertEqual(ws["C1"].value, "외상매출금")
+        self.assertEqual(ws["H3"].value, "← 장기 미수금 업체")
+        res = self.client.get("/api/management/ledger/export/?year=2026&period=quarter&quarter=2")
+        self.assertEqual(load_workbook(BytesIO(res.content)).sheetnames, ["2026-Q2"])  # 빈 양식 1장
+        self.assertEqual(self.client.get("/api/management/ledger/export/?year=2027&period=year").status_code, 400)
+
+
+class DetailMetricsTests(APITestCase):
+    """경영지원 상세 지표 (조원 저장소 break-even·productivity·cash-forecast 규칙)"""
+
+    def test_break_even(self):
+        from .detail_metrics import break_even
+
+        f = finance(2026, 9, product=1000, purchase=300, material=100, expense=200)
+        ad = ExpenseCategory.objects.create(name="광고", cost_type="variable")
+        etc = ExpenseCategory.objects.create(name="기타")  # 미분류 → 고정비
+        OtherExpense.objects.create(monthly=f, category=ad, amount=100)
+        OtherExpense.objects.create(monthly=f, category=etc, amount=50)
+        rows = list(MonthlyFinance.objects.prefetch_related("other_expenses__category"))
+        b = break_even(rows, 1000)
+        self.assertEqual((b["variable_cost"], b["fixed_cost"], b["contribution"]), (500, 250, 500))
+        self.assertEqual((b["bep_revenue"], b["rate"], b["gap"], b["unclassified_count"]), (500, 200.0, 500, 1))
+        self.assertEqual(break_even(rows, 400)["reason"], "not-reachable")  # 변동비 ≥ 매출
+        self.assertEqual(break_even([], 0)["reason"], "no-data")
+
+    def test_productivity_rounds(self):
+        from .detail_metrics import productivity
+
+        self.assertEqual(productivity(3, True, 1000, -1000)["profit_per_head"], -333)
+        self.assertEqual(productivity(None, True, 1, 1)["reason"], "no-headcount")
+        self.assertEqual(productivity(12, False, 1, 1)["reason"], "no-data")
+
+    def test_cash_forecast(self):
+        from .detail_metrics import cash_forecast, with_vat
+
+        today = date(2026, 11, 4)
+        for m in (8, 9, 10):
+            finance(2026, m, product=1000, expense=100)
+        MonthlyFinance.objects.filter(month=10).update(cash_balance=5000)
+        L = lambda **kw: LedgerEntry.objects.create(year=2026, month=10, partner_name="x", **kw)  # noqa: E731
+        L(kind="ar", ar_status="scheduled", amount=300, due_on=date(2027, 1, 10))  # 1월에 들어옴
+        L(kind="ar", ar_status="scheduled", amount=50)  # 예정일 없음 → 첫 달
+        L(kind="ar", ar_status="long_overdue", amount=999)  # 넣지 않음
+        L(kind="ap", purchase_type="goods", amount=200, due_on=date(2026, 12, 20))
+        L(kind="ap", purchase_type="goods", amount=70)  # 예정일 없음 → 기준월 다음 달(11월) = 이미 지난 달
+        c = cash_forecast(today)
+        first, second = c["months"][0], c["months"][1]
+        self.assertEqual((first["year"], first["month"]), (2026, 12))
+        self.assertEqual((first["inflow_planned"], first["outflow_planned"]), (50, 200))
+        self.assertEqual(second["inflow_planned"], 300)
+        self.assertEqual(c["average"]["inflow"], with_vat(1000))  # 매출은 ×1.1
+        self.assertEqual(c["average"]["outflow"], 100)  # 경비는 그대로
+        self.assertEqual(first["inflow_estimated"], 1100)  # 기준월 10월 + 2 = 12월부터 추정
+        self.assertEqual(first["balance"], 5000 + first["net"])
+        self.assertEqual((c["notes"]["long_overdue"]["amount"], c["notes"]["past_outflow"]["amount"]), (999, 70))
+
+    def test_detail_api(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+        res = self.client.get("/api/management/detail/?year=2026&period=quarter&quarter=3")
+        self.assertEqual(res.status_code, 200)
+        for key in ("break_even", "productivity", "receivables", "cash_forecast", "changes", "trend"):
+            self.assertIn(key, res.data)
+        self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
+        self.assertEqual(self.client.get("/api/management/detail/").status_code, 403)

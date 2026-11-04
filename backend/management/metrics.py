@@ -171,6 +171,15 @@ def compare(current, base, aligned):
         # 이익은 적자·소액이면 증감률이 크게 튀어 금액 차이로 비교
         "profit_diff": current["profit"]["amount"] - base["profit"]["amount"] if ch and bh else None,
         "margin_diff": margin_diff,  # %p
+        # 항목별 증감률 (상세 표용)
+        "revenue_items": {
+            i["key"]: _change(i["amount"], next(b["amount"] for b in base["revenue"]["items"] if b["key"] == i["key"]), ch, bh)
+            for i in current["revenue"]["items"]
+        },
+        "cost_items": {
+            i["key"]: _change(i["amount"], next(b["amount"] for b in base["costs"]["items"] if b["key"] == i["key"]), ch, bh)
+            for i in current["costs"]["items"]
+        },
     }
 
 
@@ -286,11 +295,14 @@ def trend(period, finance, today):
     for i in range(last - TREND_MONTHS + 1, last + 1):
         row = finance.get(i)
         if row is None:
-            points.append({**_ym(i), "status": "pending" if i >= current else "missing", "revenue": None, "costs": None, "profit": None, "margin": None})
+            points.append({**_ym(i), "status": "pending" if i >= current else "missing", "revenue": None, "costs": None, "profit": None, "margin": None,
+                           "product": None, "merchandise": None, "service": None})
             continue
         revenue = _revenue([row])["total"]
         costs = _costs([row])["total"]
-        points.append({**_ym(i), "status": row.status, "revenue": revenue, "costs": costs, "profit": revenue - costs, "margin": pct(revenue - costs, revenue)})
+        points.append({**_ym(i), "status": row.status, "revenue": revenue, "costs": costs, "profit": revenue - costs, "margin": pct(revenue - costs, revenue),
+                       # 매출 구성 (상세 화면 월별 누적 막대)
+                       "product": row.product_sales, "merchandise": row.merchandise_sales, "service": row.service_sales})
     return points
 
 

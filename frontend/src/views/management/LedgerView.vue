@@ -4,7 +4,7 @@
 // 외상매출금의 장기 미수금 + 당월 수금예정이 대시보드 미수금이 되고, 나머지 세 구분은 월간 입력 [불러오기]의 원본이다
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { createLedgerEntry, getLedger, ledgerAction, updateLedgerEntry } from '@/api/management'
+import { createLedgerEntry, exportLedger, getLedger, ledgerAction, updateLedgerEntry } from '@/api/management'
 import MoneyInput from '@/components/MoneyInput.vue'
 import LedgerCopyDialog from '@/components/management/LedgerCopyDialog.vue'
 import RowHistoryDialog from '@/components/management/RowHistoryDialog.vue'
@@ -176,6 +176,17 @@ async function runAction() {
   }
 }
 
+// 엑셀 내려받기: 보고 있는 기준년월의 당월·분기·연간
+const quarter = computed(() => Math.floor((ym.value.month - 1) / 3) + 1)
+async function download(kind) {
+  error.value = ''
+  try {
+    await exportLedger(ym.value.year, kind, ym.value.month)
+  } catch (e) {
+    error.value = e.message
+  }
+}
+
 async function copyDone(text) {
   copying.value = false
   await load()
@@ -196,7 +207,15 @@ async function copyDone(text) {
       <input id="ledger-month" type="month" class="form-control form-control-sm w-auto" :max="thisMonth" :value="monthText" @change="changeMonth($event.target.value)" />
       <button type="button" class="btn btn-sm btn-outline-secondary" @click="copying = true">지난달 내용 불러오기</button>
       <RouterLink :to="{ path: '/management/ledger/import', query: { month: monthText } }" class="btn btn-sm btn-outline-secondary">엑셀 가져오기</RouterLink>
-      <label class="form-check-label small d-flex align-items-center gap-1 ms-auto">
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <small class="text-muted">엑셀 다운로드</small>
+        <div class="btn-group btn-group-sm" role="group" aria-label="장부 엑셀 다운로드 기간">
+          <button type="button" class="btn btn-outline-secondary" @click="download('month')">{{ ym.month }}월</button>
+          <button type="button" class="btn btn-outline-secondary" @click="download('quarter')">{{ quarter }}분기</button>
+          <button type="button" class="btn btn-outline-secondary" @click="download('year')">{{ ym.year }}년</button>
+        </div>
+      </div>
+      <label class="form-check-label small d-flex align-items-center gap-1">
         <input v-model="showHidden" type="checkbox" class="form-check-input mt-0" @change="editing = null; sync()" /> 숨긴 항목 보기
       </label>
     </div>

@@ -16,6 +16,7 @@ const router = createRouter({
       children: [
         { path: '', component: () => import('@/views/management/DashboardView.vue') },
         { path: 'entry', component: () => import('@/views/management/EntryView.vue'), meta: { edit: true } },
+        { path: 'detail', component: () => import('@/views/management/DetailView.vue') },
         { path: 'history', component: () => import('@/views/management/HistoryView.vue') },
         { path: 'settings', component: () => import('@/views/management/SettingsView.vue'), meta: { edit: true } },
         { path: 'ledger', component: () => import('@/views/management/LedgerView.vue'), meta: { edit: true } },

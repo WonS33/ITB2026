@@ -132,6 +132,7 @@ async function downloadTargets() {
             </div>
             <div class="small text-muted">매출 − 매입·지출 (회계상 이익과 다를 수 있음)</div>
             <ul class="list-unstyled small mb-0 mt-2"><li v-for="d in profitDeltas()" :key="d.label">{{ d.label }} {{ deltaText(d) }}<span v-if="d.partial">*</span></li></ul>
+            <RouterLink :to="{ path: '/management/detail', hash: '#break-even' }" class="small d-inline-block mt-2">손익분기점 보기 →</RouterLink>
           </div></div>
         </div>
         <div class="col-sm-6 col-xl-3">
@@ -149,6 +150,7 @@ async function downloadTargets() {
               <div class="kpi-value">-</div>
               <div class="small text-muted">이 기간에 경영지원 관리 입력 없음</div>
             </template>
+            <RouterLink :to="{ path: '/management/detail', hash: '#receivables' }" class="small d-inline-block mt-2">전체 보기 →</RouterLink>
           </div></div>
         </div>
       </div>

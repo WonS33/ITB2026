@@ -2,7 +2,14 @@
 // edit: true인 묶음은 그 팀 수정 권한자에게만 보인다. 실제 권한 확인은 라우터와 백엔드 API에서도 한다.
 export const TEAM_MENUS = {
   management: [
-    { group: '조회', items: [{ label: '대시보드', to: '/management' }, { label: '변경 이력', to: '/management/history' }] },
+    {
+      group: '조회',
+      items: [
+        { label: '대시보드', to: '/management' },
+        { label: '경영지원 상세', to: '/management/detail' },
+        { label: '변경 이력', to: '/management/history' },
+      ],
+    },
     {
       group: '데이터 입력',
       edit: true,

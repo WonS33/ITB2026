@@ -60,3 +60,12 @@ export const previewLedgerImport = (file, year, month, sheet) =>
   apiFetch('/management/ledger/import/preview/', { method: 'POST', body: importForm(file, year, month, { sheet }) })
 export const importLedger = (file, year, month, extra) =>
   apiFetch('/management/ledger/import/', { method: 'POST', body: importForm(file, year, month, extra) })
+// 장부 엑셀 내려받기 — kind: month / quarter / year (숨긴 행 제외, 다시 [엑셀 가져오기]로 올려도 같은 값으로 읽힘)
+export function exportLedger(year, kind, month) {
+  const params = new URLSearchParams({ year, period: kind })
+  if (kind === 'month') params.set('month', month)
+  if (kind === 'quarter') params.set('quarter', Math.floor((month - 1) / 3) + 1)
+  return downloadFile(`/management/ledger/export/?${params}`, '경영지원_관리.xlsx')
+}
+// 경영지원 상세 (손익분기점·인당 생산성·미수금 상세·자금 수지 예측 포함)
+export const getDetail = (period) => apiFetch(`/management/detail/?${periodParams(period)}`)

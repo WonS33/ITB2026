@@ -48,6 +48,7 @@
 | PUT | `/api/management/ledger/{id}/` | 행 수정 (`fields`, `expected_updated_at`). 구분 변경 불가, 다르면 409 | 전체 |
 | POST | `/api/management/ledger/{id}/hide/`, `restore/` | 숨김·복구 (`expected_updated_at`) | 전체 |
 | GET / POST | `/api/management/ledger/copy/` | 지난달 내용 불러오기: GET 미리보기(`existing`·`source_count`·구분별 행·금액·당월 수금), POST 저장(`include_collected`, `expected_source_count`). 이번 달에 행이 있거나 지난달이 바뀌었으면 409 | 전체 |
+| GET | `/api/management/ledger/export/?(기간)` | 장부 엑셀 (숨긴 행 제외). 당월 = 그 달 시트, 분기·연간 = 데이터가 있는 달만 월별 시트(없으면 빈 양식 1장). 원본 양식 모양이라 다시 이관할 수 있음. 미래 기간은 400 | 전체 |
 | POST | `/api/management/ledger/import/preview/` | 엑셀 이관 미리보기 (multipart: `file`, `year`, `month`, `sheet`). 블록·행·총액 검산·건너뛴 행·같은 달 기존 행 수. DB에 쓰지 않음. 양식 시트가 여러 장이면 400 + `sheet_choices` | 전체 |
 | POST | `/api/management/ledger/import/` | 엑셀 이관 저장 (미리보기와 같은 `file` + `file_sha256`, `mode`=overwrite\|append, `expected_existing`, `choices` JSON). 고를 값이 남으면 400 + `blockers`, 같은 달이 바뀌었으면 409 | 전체 |
 | GET / POST | `/api/management/receivables/` | 미수금 건별 기록 목록(숨긴 건 포함, `age_days`·`over90`·`overdue`, `basis` = 장부 외상매출금과 같은 기준일 비교)·등록 | 전체 |
@@ -55,6 +56,7 @@
 | POST | `/api/management/receivables/{id}/collect\|uncollect\|hide\|restore/` | 수금 처리(`collected_on`)·수금 취소·숨김·복구. `expected_updated_at` 필수 | 전체 |
 | GET | `/api/management/receivables/export/?(기간)` | 미수금 엑셀 (기준일 = min(기간 말일, 오늘), 경과일 구간·거래처별·상세) | 전체 |
 | GET | `/api/management/dashboard/?(기간)` | 메인 화면 집계: `confirmation`(확정·미확정·마감 전 달), `revenue`·`costs`(구성 포함)·`profit`(간이), `changes`(직전 기간·전년 동기 증감), `targets`(기간·분기·연간 진도), `trend`(최근 12개월), `receivables`(외상매출금 기준), `teams`(생산량·산업 분야·제품·서비스) | 전체 |
+| GET | `/api/management/detail/?(기간)` | 경영지원 상세: 대시보드 집계(항목별 증감 `revenue_items`·`cost_items`, 월별 매출 구성 포함) + `break_even`·`productivity`·`receivables`(거래처별·수금 예정·미수 행) + `cash_forecast`(오늘 기준 6개월) | 전체 |
 | GET | `/api/management/targets/{year}/export/` | 목표 대비 실적 엑셀 (확정된 달만, 변경 기록에 남김) | 전체 |
 | POST | `/api/management/ai-comment/` | AI 분석 코멘트 생성 (선택, 기업 허용 확인 후) | 전체 |
 
@@ -150,3 +152,5 @@
 - 2026-11-04: 미수금 건별 기록 API(등록·수정·수금·숨김·복구·엑셀)와 건별 변경 기록 API 추가
 - 2026-11-04: 경영지원 관리 장부 API(행 추가·수정·숨김·복구, 지난달 내용 불러오기) 추가
 - 2026-11-04: 경영지원 관리 엑셀 이관 API(미리보기·저장) 추가 (6-2단계)
+- 2026-11-04: 경영지원 관리 장부 엑셀 내려받기 API 추가 (6-3단계)
+- 2026-11-04: 경영지원 상세 API 추가

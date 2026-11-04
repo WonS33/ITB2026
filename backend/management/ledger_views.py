@@ -7,14 +7,19 @@
 - 권한: 경영지원팀 수정 권한이면 모두 가능 (조원 규칙)
 """
 
+from urllib.parse import quote
+
 from django.db import transaction
+from django.http import HttpResponse
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from django.utils.dateparse import parse_datetime
 from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 
-from . import audit
+from common.periods import period_from_params
+
+from . import audit, export
 from .models import LedgerEntry
 from .serializers import LedgerFieldsSerializer
 from .views import Conflict, ManagementApiView, _check_year_month, _name
@@ -269,3 +274,27 @@ class LedgerCopyView(ManagementApiView):
                 },
             )
         return Response({"message": f"{from_text} 내용 {len(entries)}행을 {month_text}로 불러왔습니다. 잔액을 이번 달 값으로 고치세요."})
+
+
+class LedgerExportView(ManagementApiView):
+    """GET /api/management/ledger/export/?year=&period=month|quarter|year&month=&quarter= — 장부 엑셀 (숨긴 행 제외)
+
+    내려받은 사실을 변경 기록에 남긴다 (기간·시트 수·행 수·파일 이름)
+    """
+
+    def get(self, request):
+        period = period_from_params(request.query_params)
+        sheets = export.plan_ledger_sheets(period)
+        if not sheets:
+            raise ValidationError({"detail": "아직 시작하지 않은 기간은 내려받을 수 없습니다."})
+        name = export.ledger_file_name(period)
+        content = export.build_ledger_workbook(sheets)
+        rows = sum(len(r) for _, r in sheets)
+        audit.record_audit(
+            actor=request.user, screen="ledger-export", action="EXPORT", target_type="LedgerExport",
+            target_id=name, target_label=f"경영지원 관리 엑셀 다운로드 · {export.ledger_period_name(period)}",
+            meta={"period": period.label, "sheet_count": len(sheets), "rows": rows, "file_name": name},
+        )
+        response = HttpResponse(content, content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        response["Content-Disposition"] = f"attachment; filename=\"ledger.xlsx\"; filename*=UTF-8''{quote(name)}"
+        return response

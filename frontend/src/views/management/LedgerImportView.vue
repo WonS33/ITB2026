@@ -18,7 +18,8 @@ const EXPENSE = [{ value: 'advertising', label: '광고선전비' }, { value: 'e
 const TOTAL_STATE = {
   match: { text: '일치', cls: 'badge-soft' },
   mismatch: { text: '불일치', cls: 'badge-low' },
-  no_result: { text: '계산값 없음', cls: 'badge-warn' },
+  // 수식만 있고 계산 결과가 저장되지 않은 파일 (이 앱에서 내려받은 파일 등) — 엑셀에서 열어 저장하면 계산값이 생긴다. 오류 아님
+  no_result: { text: '계산값 없음 (엑셀에서 열어 저장하면 검산 가능)', cls: 'badge-soft' },
   no_total: { text: '총액 칸 비어 있음', cls: 'badge-soft' },
 }
 
