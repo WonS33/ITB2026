@@ -47,3 +47,16 @@ export const ledgerAction = (id, action, expectedUpdatedAt) =>
   apiFetch(`/management/ledger/${id}/${action}/`, { method: 'POST', body: { expected_updated_at: expectedUpdatedAt } })
 export const previewLedgerCopy = (year, month) => apiFetch(`/management/ledger/copy/?year=${year}&month=${month}`)
 export const copyLedger = (body) => apiFetch('/management/ledger/copy/', { method: 'POST', body })
+// 경영지원 관리 엑셀 이관: 미리보기(저장 안 함) → 같은 파일 + 선택값으로 가져오기
+function importForm(file, year, month, extra = {}) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('year', year)
+  form.append('month', month)
+  Object.entries(extra).forEach(([k, v]) => v !== undefined && v !== null && form.append(k, v))
+  return form
+}
+export const previewLedgerImport = (file, year, month, sheet) =>
+  apiFetch('/management/ledger/import/preview/', { method: 'POST', body: importForm(file, year, month, { sheet }) })
+export const importLedger = (file, year, month, extra) =>
+  apiFetch('/management/ledger/import/', { method: 'POST', body: importForm(file, year, month, extra) })

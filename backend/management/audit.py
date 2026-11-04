@@ -24,6 +24,7 @@ ACTION_LABELS = {
     "UNCOLLECT": "수금 취소",
     "HIDE": "숨김",
     "RESTORE": "복구",
+    "IMPORT": "엑셀 이관",
     "EXPORT": "엑셀 다운로드",
 }
 # 기록하는 화면 → 화면 표기
@@ -37,6 +38,7 @@ SCREEN_LABELS = {
     "receivables-export": "미수금 엑셀 다운로드",
     "ledger": "경영지원 관리",
     "ledger-copy": "경영지원 관리 지난달 불러오기",
+    "ledger-import": "경영지원 관리 엑셀 이관",
 }
 
 _FORBIDDEN = re.compile(r"pass(word|wd)?|hash|token|secret|session|salt|credential|apikey|api_key", re.I)
@@ -264,6 +266,16 @@ def _meta_line(log):
             f"{m['from']} → {m['month']}" if m.get("from") else None,
             f"{m['saved_rows']}행 저장" if isinstance(m.get("saved_rows"), int) else None,
             f"당월 수금 {m['collected_rows']}행 {m.get('include_collected', '')}".strip() if m.get("collected_rows") else None,
+        ]
+        return " · ".join(p for p in parts if p) or None
+    if log.screen == "ledger-import":
+        parts = [
+            m.get("month"),
+            m.get("mode"),
+            f"{m['saved_rows']}행 저장" if isinstance(m.get("saved_rows"), int) else None,
+            f"숨긴 기존 행 {m['hidden_rows']}" if isinstance(m.get("hidden_rows"), int) else None,
+            f"제외 {m['excluded_rows']}행" if m.get("excluded_rows") else None,
+            m.get("file_name"),
         ]
         return " · ".join(p for p in parts if p) or None
     if log.action == "EXPORT":

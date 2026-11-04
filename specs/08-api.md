@@ -48,6 +48,8 @@
 | PUT | `/api/management/ledger/{id}/` | 행 수정 (`fields`, `expected_updated_at`). 구분 변경 불가, 다르면 409 | 전체 |
 | POST | `/api/management/ledger/{id}/hide/`, `restore/` | 숨김·복구 (`expected_updated_at`) | 전체 |
 | GET / POST | `/api/management/ledger/copy/` | 지난달 내용 불러오기: GET 미리보기(`existing`·`source_count`·구분별 행·금액·당월 수금), POST 저장(`include_collected`, `expected_source_count`). 이번 달에 행이 있거나 지난달이 바뀌었으면 409 | 전체 |
+| POST | `/api/management/ledger/import/preview/` | 엑셀 이관 미리보기 (multipart: `file`, `year`, `month`, `sheet`). 블록·행·총액 검산·건너뛴 행·같은 달 기존 행 수. DB에 쓰지 않음. 양식 시트가 여러 장이면 400 + `sheet_choices` | 전체 |
+| POST | `/api/management/ledger/import/` | 엑셀 이관 저장 (미리보기와 같은 `file` + `file_sha256`, `mode`=overwrite\|append, `expected_existing`, `choices` JSON). 고를 값이 남으면 400 + `blockers`, 같은 달이 바뀌었으면 409 | 전체 |
 | GET / POST | `/api/management/receivables/` | 미수금 건별 기록 목록(숨긴 건 포함, `age_days`·`over90`·`overdue`, `basis` = 장부 외상매출금과 같은 기준일 비교)·등록 | 전체 |
 | PUT | `/api/management/receivables/{id}/` | 수정 (수금 완료 건은 `collected_on`도). `expected_updated_at` 필수, 다르면 409 | 전체 |
 | POST | `/api/management/receivables/{id}/collect\|uncollect\|hide\|restore/` | 수금 처리(`collected_on`)·수금 취소·숨김·복구. `expected_updated_at` 필수 | 전체 |
@@ -147,3 +149,4 @@
 - 2026-11-04: 메인 대시보드 API·목표 대비 실적 엑셀 구현
 - 2026-11-04: 미수금 건별 기록 API(등록·수정·수금·숨김·복구·엑셀)와 건별 변경 기록 API 추가
 - 2026-11-04: 경영지원 관리 장부 API(행 추가·수정·숨김·복구, 지난달 내용 불러오기) 추가
+- 2026-11-04: 경영지원 관리 엑셀 이관 API(미리보기·저장) 추가 (6-2단계)

@@ -195,6 +195,7 @@ async function copyDone(text) {
       <label class="small text-muted" for="ledger-month">기준년월</label>
       <input id="ledger-month" type="month" class="form-control form-control-sm w-auto" :max="thisMonth" :value="monthText" @change="changeMonth($event.target.value)" />
       <button type="button" class="btn btn-sm btn-outline-secondary" @click="copying = true">지난달 내용 불러오기</button>
+      <RouterLink :to="{ path: '/management/ledger/import', query: { month: monthText } }" class="btn btn-sm btn-outline-secondary">엑셀 가져오기</RouterLink>
       <label class="form-check-label small d-flex align-items-center gap-1 ms-auto">
         <input v-model="showHidden" type="checkbox" class="form-check-input mt-0" @change="editing = null; sync()" /> 숨긴 항목 보기
       </label>

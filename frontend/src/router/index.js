@@ -19,6 +19,7 @@ const router = createRouter({
         { path: 'history', component: () => import('@/views/management/HistoryView.vue') },
         { path: 'settings', component: () => import('@/views/management/SettingsView.vue'), meta: { edit: true } },
         { path: 'ledger', component: () => import('@/views/management/LedgerView.vue'), meta: { edit: true } },
+        { path: 'ledger/import', component: () => import('@/views/management/LedgerImportView.vue'), meta: { edit: true, title: '경영지원 관리 엑셀 이관' } },
         { path: 'receivables', component: () => import('@/views/management/ReceivablesView.vue'), meta: { edit: true } },
       ],
     },

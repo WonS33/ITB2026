@@ -1,5 +1,7 @@
+import json
 from datetime import date
 from io import BytesIO
+from pathlib import Path
 from unittest.mock import patch
 
 from openpyxl import load_workbook
@@ -636,3 +638,96 @@ class LedgerApiTests(APITestCase):
         self.client.force_authenticate(make_user("prod", User.Role.LEADER, [P], [P]))
         self.assertEqual(self.client.get("/api/management/ledger/").status_code, 403)
         self.assertEqual(self.add().status_code, 403)
+
+
+TEST_FILES = Path(__file__).parent / "test_files"
+
+
+@patch("management.ledger_views.timezone.localdate", return_value=TODAY)
+@patch("management.ledger_import_views.timezone.localdate", return_value=TODAY)
+class LedgerImportTests(APITestCase):
+    """경영지원 관리 엑셀 이관 (조원 저장소 ledger/import 규칙, 시험 파일은 가상 데이터)"""
+
+    def setUp(self):
+        self.client.force_authenticate(make_user("mgmt", User.Role.MEMBER, [M]))
+
+    def upload(self, url, name="ledger-sample.xlsx", **data):
+        with open(TEST_FILES / name, "rb") as f:
+            return self.client.post(url, {"year": 2026, "month": 10, "file": f, **data}, format="multipart")
+
+    def preview(self, name="ledger-sample.xlsx"):
+        return self.upload("/api/management/ledger/import/preview/", name)
+
+    def run_import(self, preview, choices=None, mode="none", name="ledger-sample.xlsx"):
+        ap_rows = [r["row"] for b in preview["blocks"] if b["kind"] == "ap" for r in b["rows"]]
+        choices = choices if choices is not None else {"purchase_type": {str(r): "raw_material" for r in ap_rows}}
+        return self.upload("/api/management/ledger/import/", name, file_sha256=preview["file_sha256"], mode=mode,
+                           expected_existing=preview["existing_total"], choices=json.dumps(choices))
+
+    def test_preview_reads_without_saving(self, *_):
+        res = self.preview()
+        self.assertEqual(res.status_code, 200)
+        ar = res.data["blocks"][0]
+        self.assertEqual([r["ar_status"] for r in ar["rows"]][:3], ["long_overdue", "long_overdue", "collected"])
+        self.assertEqual(str(next(r for r in ar["rows"] if r["row"] == 8)["settled_on"]), "2026-10-15")  # 적요 날짜
+        vendor = res.data["blocks"][3]
+        self.assertEqual(vendor["auto_transfer_sum"], 165000)
+        self.assertEqual(LedgerEntry.objects.count(), 0)  # 미리보기는 저장하지 않음
+
+    def test_import_needs_purchase_type_then_saves(self, *_):
+        p = self.preview().data
+        res = self.run_import(p, choices={})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("매입유형을 고르세요", res.data["detail"])
+        res = self.run_import(p)
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["saved"], 16)
+        e = LedgerEntry.objects.get(partner_name="라마테크(가상)")
+        self.assertEqual((e.partner_code, e.ar_status, e.settled_on), ("0000000118", "collected", date(2026, 10, 31)))
+        self.assertTrue(LedgerEntry.objects.get(partner_name="타파통신(가상)").auto_transfer)
+        log = AuditLog.objects.get(screen="ledger-import")
+        self.assertEqual((log.action, log.meta["saved_rows"], log.meta["mode"]), ("IMPORT", 16, "추가"))
+
+    def test_existing_rows_need_mode_and_overwrite_hides(self, *_):
+        LedgerEntry.objects.create(year=2026, month=10, kind="ap", purchase_type="goods", partner_name="기존", amount=1)
+        p = self.preview().data
+        self.assertEqual(p["existing_total"], 1)
+        self.assertEqual(self.run_import(p).status_code, 400)  # 덮어쓰기·추가를 안 고름
+        res = self.run_import(p, mode="overwrite")
+        self.assertEqual((res.status_code, res.data["hidden"]), (200, 1))
+        self.assertIsNotNone(LedgerEntry.objects.get(partner_name="기존").deleted_at)  # 지우지 않고 숨김
+
+    def test_changed_file_or_existing_rejected(self, *_):
+        p = self.preview().data
+        self.assertEqual(self.run_import({**p, "file_sha256": "0" * 64}).status_code, 400)
+        LedgerEntry.objects.create(year=2026, month=10, kind="ap", purchase_type="goods", partner_name="그사이", amount=1)
+        self.assertEqual(self.run_import(p).status_code, 409)
+
+    def test_issues_file(self, *_):
+        p = self.preview("ledger-sample-issues.xlsx").data
+        ar = p["blocks"][0]
+        self.assertEqual((ar["skipped_code_only"], ar["skipped_zero"]), ([30], [29]))
+        self.assertEqual(p["blocks"][1]["totals"][0]["state"], "mismatch")
+        unclassified = [r["row"] for r in ar["rows"] if r["ar_status"] is None]
+        self.assertEqual(unclassified, [25, 26, 28])
+        res = self.run_import(p, name="ledger-sample-issues.xlsx")
+        self.assertIn("상태(미분류)를 고르세요", res.data["detail"])
+        choices = {
+            "purchase_type": {"41": "goods", "42": "goods", "43": "goods"},
+            "ar_status": {"25": "scheduled", "26": "collected", "28": "long_overdue"},
+            "settled_on": {"26": "2026-10-20"},
+        }
+        res = self.run_import(p, choices=choices, name="ledger-sample-issues.xlsx")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(LedgerEntry.objects.get(partner_name="사아워터(가상)").settled_on, date(2026, 10, 20))
+
+    def test_not_a_ledger_file(self, *_):
+        from openpyxl import Workbook
+
+        buf = BytesIO()
+        Workbook().save(buf)
+        buf.name = "빈파일.xlsx"
+        buf.seek(0)
+        res = self.client.post("/api/management/ledger/import/preview/", {"year": 2026, "month": 10, "file": buf}, format="multipart")
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("양식이 아닙니다", res.data["detail"])
