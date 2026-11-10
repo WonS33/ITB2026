@@ -5,7 +5,9 @@ const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes: [
     { path: '/login', component: () => import('@/views/LoginView.vue'), meta: { public: true } },
-    { path: '/', redirect: () => homePath() },
+    // 첫 화면: 아래 beforeEach에서 내 정보를 받은 뒤 볼 수 있는 첫 팀 화면으로 보낸다 (화면 자체는 없음).
+    // redirect를 쓰면 내 정보를 받기 전에 실행돼 "권한 없음" 화면으로 잘못 가므로 쓰지 않는다
+    { path: '/', component: { render: () => null }, meta: { home: true } },
     // meta.team: 이 화면을 보려면 해당 팀 열람 권한이 필요하다
     // 팀 화면: 왼쪽 메뉴 틀(TeamLayout) 안에 하위 화면. meta.edit: 그 팀 수정 권한이 필요한 화면
     // 경영지원팀 (조원 저장소 yeonk-rgb/newtork-dashboard 기능을 옮김)
@@ -74,6 +76,7 @@ router.beforeEach(async (to) => {
     return auth.user && to.path === '/login' ? homePath() : true
   }
   if (!auth.user) return { path: '/login', query: { next: to.fullPath } }
+  if (to.meta.home) return homePath()
   if (to.meta.team && !canView(to.meta.team)) return '/forbidden'
   if (to.meta.edit && !canEdit(to.meta.team)) return '/forbidden'
   if (to.meta.fullAccess && !auth.user.has_full_access) return '/forbidden'
