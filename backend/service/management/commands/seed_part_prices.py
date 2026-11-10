@@ -35,11 +35,24 @@ VIRTUAL_COMPANY_PRICES = [
     ("VX-09-B-01", "가상플랜트", date(2026, 10, 1), 260000),
 ]
 
+# 예전(2026-10-20) 이 명령이 만들던 가상 단가 이력 — 업체·단가표 연결이 없다.
+# 위 업체별 가상 단가와 섞이면 직전 대비 증감이 엉뚱하게 나오므로, 실행할 때 이 값과 똑같은 줄만 지운다
+OLD_VIRTUAL_PRICES = {
+    "Main Board": [(date(2025, 1, 1), 420000), (date(2025, 9, 1), 450000), (date(2026, 4, 1), 480000),
+                   (date(2027, 1, 1), 495000)],
+    "Power Board": [(date(2025, 3, 1), 280000), (date(2026, 3, 1), 300000)],
+    "Magnetic Contactor": [(date(2025, 1, 1), 85000), (date(2025, 7, 1), 92000), (date(2026, 6, 1), 88000)],
+    "Control PCB": [(date(2025, 5, 1), 350000)],
+    "Limit Switch": [(date(2025, 1, 1), 45000), (date(2026, 1, 1), 48000)],
+    "Motor": [(date(2025, 2, 1), 1200000), (date(2026, 2, 1), 1260000)],
+}
+
 
 class Command(BaseCommand):
     help = "개발·시연용 가상 부품 단가표와 업체별 가상 단가를 만든다 (단가표가 이미 있으면 아무것도 하지 않음)."
 
     def handle(self, *args, **options):
+        self.remove_old_virtual_prices()
         # 실제 단가표(또는 사람이 넣은 단가표)를 덮어쓰지 않도록, 단가표가 하나라도 있으면 건너뛴다
         if PartCatalogItem.objects.exists():
             self.stdout.write("단가표가 이미 있어 가상 단가를 만들지 않습니다.")
@@ -54,3 +67,15 @@ class Command(BaseCommand):
                                      effective_date=effective_date, unit_price=price)
         self.stdout.write(self.style.SUCCESS(
             f"가상 단가표 {len(VIRTUAL_CATALOG)}개, 업체별 가상 단가 {len(VIRTUAL_COMPANY_PRICES)}개를 만들었습니다."))
+
+    def remove_old_virtual_prices(self):
+        """예전 가상 단가 이력 지우기: 부품명·적용 시작일·단가가 모두 같고, 업체·단가표 연결·견적 번호가 없는 직접 입력 줄만"""
+        removed = 0
+        for part_name, prices in OLD_VIRTUAL_PRICES.items():
+            for effective_date, unit_price in prices:
+                removed += PartPrice.objects.filter(
+                    part_name=part_name, effective_date=effective_date, unit_price=unit_price,
+                    catalog_item=None, quote_company="", quote_no="", source=PartPrice.Source.MANUAL,
+                ).delete()[0]
+        if removed:
+            self.stdout.write(f"예전 가상 단가 이력 {removed}줄을 지웠습니다.")
