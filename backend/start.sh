@@ -22,6 +22,13 @@ if [ "$SEED_DEMO_DATA" = "True" ]; then
   # 두 명령 모두 데이터가 이미 있으면 아무것도 하지 않는다 (사람이 넣은 값을 덮어쓰지 않음)
   python manage.py seed_part_prices
   python manage.py seed_product_prices
+  # 경영지원 가상 데이터·AI 분석 예시: 월별 실적이 하나도 없을 때만 넣는다.
+  # seed_management는 실행할 때마다 같은 값으로 덮어쓰므로, 매번 실행하면 사람이 고친 값이 지워진다
+  if python manage.py shell -c "import sys; from management.models import MonthlyFinance; sys.exit(1 if MonthlyFinance.objects.exists() else 0)"; then
+    echo "경영지원 데이터가 없어 가상 데이터를 넣습니다."
+    python manage.py seed_management
+    python manage.py seed_ai_examples
+  fi
 fi
 
 # 3) 웹 서버 실행. gunicorn은 배포용 파이썬 웹 서버다 (runserver는 개발용이라 배포에 쓰지 않음)
